@@ -1,0 +1,34 @@
+# Gradle and Build folders
+.gradle/
+build/
+app/build/
+bin/
+
+# --- IDE & OS ---
+.idea/
+.vscode/
+*.iml
+.DS_Store
+captures/
+
+# NDK/C++ generated artifacts
+app/jni/SDL/
+app/libs/
+gen/
+
+# C++ Build artifacts
+build/
+bin/
+.cxx/
+*.o
+*.so
+*.apk
+.cache/
+
+# Android-specific (since android-project is a subfolder)
+android-project/.gradle/
+android-project/app/build/
+android-project/local.properties
+android-project/.externalNativeBuild/
+android-project/.cxx/
+
