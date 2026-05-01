@@ -7,8 +7,15 @@ sudo apt install libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev l
 ### Android emulator install
 sudo apt install qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils
 sudo usermod -aG kvm $USER
-flatpak install flathub com.google.AndroidStudio
-flatpak run com.google.AndroidStudio
+
+mkdir -p ~/android-studio
+tar -xvzf ~/Downloads/android-studio-panda4-linux.tar.gz -C ~/android-studio
+export ANDROID_HOME=$HOME/Android/Sdk
+export PATH=$PATH:$ANDROID_HOME/platform-tools
+export PATH=$PATH:$ANDROID_HOME/tools
+export PATH=$PATH:~/android-studio/android-studio/bin
+cd ~/android-studio/android-studio/bin
+./studio.sh
 
 Open Android Studio and navigate to Tools > SDK Manager.
 Under the SDK Platforms tab, ensure the latest Android API (e.g., API 35 or 36) is checked.
@@ -39,12 +46,24 @@ cmake --build . -j$(nproc)
 ### Android emulator
 Create file: android-project/local.properties
 Add to file: sdk.dir=/home/fors/Android/Sdk
-ANDROID_AVD_HOME=~/.var/app/com.google.AndroidStudio/config/.android/avd ~/Android/Sdk/emulator/emulator -list-avds
-ANDROID_AVD_HOME=~/.var/app/com.google.AndroidStudio/config/.android/avd ~/Android/Sdk/emulator/emulator -avd YOUR_DEVICE_NAME &
+~/Android/Sdk/emulator/emulator -list-avds
+~/Android/Sdk/emulator/emulator -avd YOUR_DEVICE_NAME &
 cd ../android-project
 ./gradlew installDebug
 
-## Cleanup
+## Useful
+
+### Gradle
+./gradlew clean
 
 ### Android emulator
 ~/Android/Sdk/platform-tools/adb emu kill
+adb devices
+adb -s emulator-5554 logcat -c
+adb -s emulator-5554 logcat
+
+## Server
+python ./backend/server.py
+
+## TODO
+Ensure server client are not started in each emulator, could be better to try linux first for networking

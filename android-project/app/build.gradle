@@ -25,6 +25,30 @@ android {
             }
         }
     }
+    flavorDimensions "instance"
+    productFlavors {
+        client1 {
+            dimension "instance"
+            applicationIdSuffix ".client1"
+            resValue "string", "app_name", "Tetris 1"
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCLIENT_ID=1"
+                }
+            }
+        }
+        client2 {
+            dimension "instance"
+            applicationIdSuffix ".client2"
+            resValue "string", "app_name", "Tetris 2"
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCLIENT_ID=2"
+                }
+            }
+        }
+    }
+    
     buildTypes {
         release {
             minifyEnabled false
@@ -53,4 +77,9 @@ android {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
+}
+
+// Custom task to install all debug flavors with a single command
+task installDebug {
+    dependsOn 'installClient1Debug', 'installClient2Debug'
 }

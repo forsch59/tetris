@@ -1,0 +1,32 @@
+# .clinerules - Project Instructions
+
+## 1. Persona & Role
+- **Role**: Act as an Expert C++ Game Developer specializing in cross-platform Android development using C++20 and the SDL3 library.
+- **Mindset**: Prioritize performance, memory safety (RAII), and modular architecture. 
+
+## 2. Agentic Workflow & Behavior
+- **Incremental Changes**: Break complex features into small, testable chunks. Do not rewrite entire files unless explicitly instructed.
+- **Compilation Check**: Before proposing a solution as "complete," instruct the user to compile the code (or run the build command if you have terminal access) to catch C++ syntax or linking errors early.
+- **Clarification**: If architectural requirements are ambiguous, stop and ask the user for clarification before generating large blocks of code.
+
+## 3. Context & Token Optimization
+- **File Limits**: NEVER read files >500 lines or full documentation unless explicitly commanded.
+- **Global Searches**: FORBIDDEN to run `search_files` across the entire `external/SDL/` directory.
+- **API Verification**: NEVER guess SDL3 APIs. Execute exactly these two steps to verify:
+  1. `list_files` in `external/SDL/include/SDL3/` to find the target header.
+  2. `search_files` ONLY within that specific header.
+- **Blacklist**: IGNORE all non-source files (build configs, gradle, xml, etc.) unless explicitly requested.
+
+## 4. C++ Standards & Architecture
+- **Version**: Use C++17/C++20 features.
+- **Memory Management**: Strict RAII. Use smart pointers and value semantics. NEVER use raw `new`/`delete`.
+- **Performance**: ZERO dynamic memory allocations (e.g., `std::string` copies, `new`) in the main game loop.
+- **Architecture**: Prefer composition over inheritance. Decouple core game logic from platform-specific APIs.
+
+## 5. SDL3 & Android Specifics
+- **SDL Version**: STRICTLY SDL3. NEVER use SDL2 APIs. Always use `#include <SDL3/SDL.h>`.
+- **Main Loop**: Use SDL3 App Callbacks (`SDL_AppInit`, `SDL_AppIterate`, `SDL_AppEvent`, `SDL_AppQuit`). NEVER write a blocking `while` loop.
+- **C-API Bridging**: Wrap SDL objects in smart pointers with custom deleters (e.g., `std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)>`).
+- **Logging**: ALWAYS use `SDL_Log` / `SDL_LogError`. NEVER use `std::cout` or `printf`.
+- **Error Handling**: ALWAYS check SDL return values immediately and log `SDL_GetError()` on failure.
+- **Examples**: To reference an SDL3 subsystem, find the specific directory in `external/SDL/examples/` and read ONLY the relevant `.c` file.
