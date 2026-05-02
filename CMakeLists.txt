@@ -12,8 +12,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_subdirectory(external/SDL)
 add_subdirectory(external/SDL_net)
 
-# Collect all source files from the src/ directory
+# Collect all source files from the src/ directory (excluding tests)
 file(GLOB SOURCES "src/*.cpp")
+list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/test_main.cpp")
 
 # Create the executable
 if(ANDROID)
@@ -38,4 +39,10 @@ else()
     target_include_directories(Tetris2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src external/SDL_net/include/SDL3_net)
     target_compile_definitions(Tetris2 PRIVATE CLIENT_ID=2)
     target_link_libraries(Tetris2 PRIVATE SDL3::SDL3 SDL3_net::SDL3_net)
+
+    # Add TetrisTests target
+    add_executable(TetrisTests src/test_main.cpp src/network.cpp)
+    target_include_directories(TetrisTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src external/SDL_net/include/SDL3_net)
+    target_compile_definitions(TetrisTests PRIVATE CLIENT_ID=1)
+    target_link_libraries(TetrisTests PRIVATE SDL3::SDL3 SDL3_net::SDL3_net)
 endif()
