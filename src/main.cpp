@@ -26,6 +26,11 @@ struct AppContext {
     uint64_t match_start_time = 0;
     bool match_started = false;
     uint64_t global_freeze_until = 0;
+
+    bool down_btn_pressed = false;
+    uint64_t last_down_press_time = 0;
+    uint64_t down_btn_hold_start = 0;
+    uint64_t last_soft_drop_time = 0;
 };
 
 SDL_AppResult SDL_Fail() {
@@ -130,6 +135,8 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
                 }
             }
         }
+    } else if (event->type == SDL_EVENT_MOUSE_BUTTON_UP || event->type == SDL_EVENT_FINGER_UP) {
+        app->down_btn_pressed = false;
     } else if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN || event->type == SDL_EVENT_FINGER_DOWN) {
         if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN && event->button.which == SDL_TOUCH_MOUSEID) {
             return SDL_APP_CONTINUE;
@@ -154,8 +161,9 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         } else if (app->state == GameState::PLAYING) {
             int render_w, render_h;
             SDL_GetRenderOutputSize(app->renderer, &render_w, &render_h);
-            float right_area = (float)render_w * 0.70f + 10.0f * ui_scale;
-            if (x >= right_area && x <= right_area + 100.0f * ui_scale && y >= 20.0f * ui_scale && y <= 70.0f * ui_scale) {
+            float menu_btn_x = (float)render_w - 120.0f * ui_scale;
+            float menu_btn_y = (float)render_h - 70.0f * ui_scale;
+            if (x >= menu_btn_x && x <= menu_btn_x + 100.0f * ui_scale && y >= menu_btn_y && y <= menu_btn_y + 50.0f * ui_scale) {
                 app->state = GameState::MENU;
                 return SDL_APP_CONTINUE;
             }
@@ -168,7 +176,17 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
                 } else if (x > 200.0f * ui_scale && x <= 300.0f * ui_scale) {
                     app->board1.rotate();
                 } else if (x > 300.0f * ui_scale && x <= 400.0f * ui_scale) {
-                    app->board1.hard_drop();
+                    uint64_t now = SDL_GetTicks();
+                    if (now - app->last_down_press_time < 250) { // Double tap
+                        app->board1.hard_drop();
+                        app->down_btn_pressed = false;
+                    } else {
+                        app->board1.update(); // Initial soft drop
+                        app->down_btn_pressed = true;
+                        app->down_btn_hold_start = now;
+                        app->last_soft_drop_time = now;
+                    }
+                    app->last_down_press_time = now;
                 }
             }
             if (y >= 600.0f * ui_scale && y <= 680.0f * ui_scale && x >= 410.0f * ui_scale && x <= 490.0f * ui_scale) {
@@ -309,6 +327,16 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             last_time = current_time;
         }
 
+        // Handle held down button for soft drop
+        if (app->down_btn_pressed && current_time >= app->global_freeze_until) {
+            if (current_time - app->down_btn_hold_start > 200) { // Delay before repeat
+                if (current_time - app->last_soft_drop_time > 50) { // Repeat rate
+                    app->board1.update();
+                    app->last_soft_drop_time = current_time;
+                }
+            }
+        }
+
         if (app->board1.game_over || app->board2.game_over) app->state = GameState::GAME_OVER;
 
         SDL_SetRenderScale(app->renderer, 2.0f * ui_scale, 2.0f * ui_scale);
@@ -341,14 +369,15 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         }
         SDL_SetRenderScale(app->renderer, 1.0f, 1.0f);
 
-        float right_area = (float)render_w * 0.70f + 10.0f * ui_scale;
+        float menu_btn_x = (float)render_w - 120.0f * ui_scale;
+        float menu_btn_y = (float)render_h - 70.0f * ui_scale;
         SDL_SetRenderDrawColor(app->renderer, 200, 50, 50, 255);
-        SDL_FRect play_exit_btn = {right_area, 20.0f * ui_scale, 100.0f * ui_scale, 50.0f * ui_scale};
+        SDL_FRect play_exit_btn = {menu_btn_x, menu_btn_y, 100.0f * ui_scale, 50.0f * ui_scale};
         SDL_RenderFillRect(app->renderer, &play_exit_btn);
         
         SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
         SDL_SetRenderScale(app->renderer, 1.5f * ui_scale, 1.5f * ui_scale);
-        SDL_RenderDebugTextFormat(app->renderer, (right_area + 20.0f * ui_scale) / (1.5f * ui_scale), (35.0f * ui_scale) / (1.5f * ui_scale), "%s", "MENU");
+        SDL_RenderDebugTextFormat(app->renderer, (menu_btn_x + 20.0f * ui_scale) / (1.5f * ui_scale), (menu_btn_y + 15.0f * ui_scale) / (1.5f * ui_scale), "%s", "MENU");
         SDL_SetRenderScale(app->renderer, 1.0f, 1.0f);
 
         auto draw_board = [&](TetrisBoard& board, float offset_screen_x, float scale_factor) {
