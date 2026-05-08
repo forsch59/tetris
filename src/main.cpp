@@ -52,7 +52,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     window_flags |= SDL_WINDOW_FULLSCREEN;
 #else
     window_w = 800;
-    window_h = 600;
+    window_h = 800;
 #endif
 
     if (!SDL_CreateWindowAndRenderer(window_title, window_w, window_h, window_flags, &window, &renderer)) {
@@ -167,8 +167,8 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
                     app->board1.move(1);
                 } else if (x > 200.0f * ui_scale && x <= 300.0f * ui_scale) {
                     app->board1.rotate();
-                } else if (x > 300.0f * ui_scale && x <= 450.0f * ui_scale) {
-                    app->board1.update();
+                } else if (x > 300.0f * ui_scale && x <= 400.0f * ui_scale) {
+                    app->board1.hard_drop();
                 }
             }
             if (y >= 600.0f * ui_scale && y <= 680.0f * ui_scale && x >= 410.0f * ui_scale && x <= 490.0f * ui_scale) {
