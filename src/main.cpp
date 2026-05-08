@@ -106,6 +106,8 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             } else if (event->key.key == SDLK_DOWN) {
                 app->board1.update(); // Soft drop
             } else if (event->key.key == SDLK_SPACE) {
+                app->board1.hard_drop();
+            } else if (event->key.key == SDLK_LCTRL || event->key.key == SDLK_RCTRL) {
                 app->board1.activate_powerup();
             }
         }

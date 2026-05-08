@@ -315,6 +315,19 @@ public:
         }
     }
 
+    void hard_drop() {
+        if (game_over || waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready()) return;
+        while (!check_collision()) {
+            current_piece.y++;
+        }
+        current_piece.y--;
+        lock_piece();
+        clear_lines();
+        if (board_active) {
+            request_spawn();
+        }
+    }
+
     void activate_powerup() {
         if (stored_powerups > 0 && shared_queue && shared_queue->net) {
             shared_queue->net->send_activate_powerup();
