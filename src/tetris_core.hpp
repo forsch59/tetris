@@ -9,20 +9,31 @@
 #include <cstring>
 #include "network.hpp"
 
+struct ColorRGBA {
+    uint8_t r, g, b, a;
+};
+
+struct TetrominoDef {
+    int shape[4][4];
+    int size;
+    ColorRGBA color;
+};
+
 struct PieceInfo {
     int type;
     int crystal_r; // -1 if no crystal
     int crystal_c;
 };
 
-const int SHAPES[7][4][4] = {
-    {{0, 0, 0, 0}, {1, 1, 1, 1}, {0, 0, 0, 0}, {0, 0, 0, 0}}, // I
-    {{1, 1, 0, 0}, {1, 1, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, // O
-    {{0, 1, 0, 0}, {1, 1, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, // T
-    {{0, 0, 1, 0}, {1, 1, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, // L
-    {{1, 0, 0, 0}, {1, 1, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, // J
-    {{0, 1, 1, 0}, {1, 1, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, // S
-    {{1, 1, 0, 0}, {0, 1, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}  // Z
+const TetrominoDef TETROMINO_DEFS[8] = {
+    { {{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}}, 0, {0, 0, 0, 0} }, // Empty
+    { {{0,0,0,0}, {1,1,1,1}, {0,0,0,0}, {0,0,0,0}}, 4, {0, 255, 255, 255} }, // I
+    { {{1,1,0,0}, {1,1,0,0}, {0,0,0,0}, {0,0,0,0}}, 2, {255, 255, 0, 255} }, // O
+    { {{0,1,0,0}, {1,1,1,0}, {0,0,0,0}, {0,0,0,0}}, 3, {128, 0, 128, 255} }, // T
+    { {{0,0,1,0}, {1,1,1,0}, {0,0,0,0}, {0,0,0,0}}, 3, {255, 165, 0, 255} }, // L
+    { {{1,0,0,0}, {1,1,1,0}, {0,0,0,0}, {0,0,0,0}}, 3, {0, 0, 255, 255} },   // J
+    { {{0,1,1,0}, {1,1,0,0}, {0,0,0,0}, {0,0,0,0}}, 3, {0, 255, 0, 255} },   // S
+    { {{1,1,0,0}, {0,1,1,0}, {0,0,0,0}, {0,0,0,0}}, 3, {255, 0, 0, 255} }    // Z
 };
 
 class SharedPieceQueue {
@@ -53,7 +64,7 @@ public:
                 std::vector<std::pair<int, int>> blocks;
                 for(int r=0; r<4; r++)
                     for(int c=0; c<4; c++)
-                        if(SHAPES[t][r][c]) blocks.push_back({r, c});
+                        if(TETROMINO_DEFS[t + 1].shape[r][c]) blocks.push_back({r, c});
                 
                 if (!blocks.empty()) {
                     std::uniform_int_distribution<int> b_dist(0, (int)blocks.size() - 1);
@@ -220,15 +231,15 @@ public:
     }
 
     void update_shape_only() {
-        int t = current_piece.type - 1;
-        if (t < 0 || t >= 7) {
+        if (current_piece.type <= 0 || current_piece.type > 7) {
             std::memset(current_piece.shape, 0, sizeof(current_piece.shape));
             std::memset(current_piece.has_crystal, 0, sizeof(current_piece.has_crystal));
             return;
         }
-        int N = (current_piece.type == 1) ? 4 : (current_piece.type == 2 ? 2 : 3);
+        const auto& def = TETROMINO_DEFS[current_piece.type];
+        int N = def.size;
         int old_shape[4][4];
-        std::memcpy(old_shape, SHAPES[t], sizeof(old_shape));
+        std::memcpy(old_shape, def.shape, sizeof(old_shape));
         for(int rot=0; rot < current_piece.rotation; rot++) {
             int new_shape[4][4] = {0};
             for(int r=0; r<N; r++)
@@ -240,11 +251,11 @@ public:
     }
 
     void apply_rotation() {
-        int t = current_piece.type - 1;
-        if (t < 0 || t >= 7) return;
-        int N = (current_piece.type == 1) ? 4 : (current_piece.type == 2 ? 2 : 3);
+        if (current_piece.type <= 0 || current_piece.type > 7) return;
+        const auto& def = TETROMINO_DEFS[current_piece.type];
+        int N = def.size;
 
-        PieceInfo info = {t, -1, -1};
+        PieceInfo info = {current_piece.type - 1, -1, -1};
         if (shared_queue) {
             info = shared_queue->get_piece_at(current_piece_index);
         }
@@ -252,7 +263,7 @@ public:
         int work_shape[4][4];
         bool work_crystal[4][4];
         
-        std::memcpy(work_shape, SHAPES[t], sizeof(work_shape));
+        std::memcpy(work_shape, def.shape, sizeof(work_shape));
         std::memset(work_crystal, 0, sizeof(work_crystal));
         if (info.crystal_r != -1) {
             work_crystal[info.crystal_r][info.crystal_c] = true;

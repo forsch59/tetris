@@ -364,8 +364,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             for (int y = 0; y < TetrisBoard::HEIGHT; ++y) {
                 for (int x = 0; x < TetrisBoard::WIDTH; ++x) {
                     SDL_FRect rect = {offset_x + x * cell_size, y_offset + y * cell_size, cell_size - 1.0f, cell_size - 1.0f};
-                    if (board.grid[y][x].color != 0) {
-                        SDL_SetRenderDrawColor(app->renderer, 0, 255, 0, 255);
+                    int color_idx = board.grid[y][x].color;
+                    if (color_idx != 0) {
+                        const auto& c = TETROMINO_DEFS[color_idx].color;
+                        SDL_SetRenderDrawColor(app->renderer, c.r, c.g, c.b, c.a);
                         SDL_RenderFillRect(app->renderer, &rect);
                         if (board.grid[y][x].has_crystal) {
                             SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
@@ -379,17 +381,20 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     }
                 }
             }
-            for(int r=0; r<4; r++) {
-                for(int c=0; c<4; c++) {
-                    if(board.current_piece.shape[r][c]) {
-                        SDL_FRect rect = {offset_x + (board.current_piece.x + c) * cell_size, y_offset + (board.current_piece.y + r) * cell_size, cell_size - 1.0f, cell_size - 1.0f};
-                        SDL_SetRenderDrawColor(app->renderer, 255, 0, 0, 255);
-                        SDL_RenderFillRect(app->renderer, &rect);
-                        if (board.current_piece.has_crystal[r][c]) {
-                            SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
-                            float c_margin = cell_size * 0.2f;
-                            SDL_FRect crect = {offset_x + (board.current_piece.x + c) * cell_size + c_margin, y_offset + (board.current_piece.y + r) * cell_size + c_margin, cell_size - c_margin * 2.0f, cell_size - c_margin * 2.0f};
-                            SDL_RenderFillRect(app->renderer, &crect);
+            if (board.current_piece.type > 0 && board.current_piece.type <= 7) {
+                const auto& c = TETROMINO_DEFS[board.current_piece.type].color;
+                for(int r=0; r<4; r++) {
+                    for(int c_idx=0; c_idx<4; c_idx++) {
+                        if(board.current_piece.shape[r][c_idx]) {
+                            SDL_FRect rect = {offset_x + (board.current_piece.x + c_idx) * cell_size, y_offset + (board.current_piece.y + r) * cell_size, cell_size - 1.0f, cell_size - 1.0f};
+                            SDL_SetRenderDrawColor(app->renderer, c.r, c.g, c.b, c.a);
+                            SDL_RenderFillRect(app->renderer, &rect);
+                            if (board.current_piece.has_crystal[r][c_idx]) {
+                                SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
+                                float c_margin = cell_size * 0.2f;
+                                SDL_FRect crect = {offset_x + (board.current_piece.x + c_idx) * cell_size + c_margin, y_offset + (board.current_piece.y + r) * cell_size + c_margin, cell_size - c_margin * 2.0f, cell_size - c_margin * 2.0f};
+                                SDL_RenderFillRect(app->renderer, &crect);
+                            }
                         }
                     }
                 }
@@ -428,12 +433,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             int next_index = app->net_client->get_global_next_index();
             for (int i = 0; i < 3; i++) {
                 PieceInfo info = app->board1.shared_queue->get_piece_at(next_index + i);
+                const auto& def = TETROMINO_DEFS[info.type + 1];
                 float current_next_y = next_offset_y + i * (next_cell_size * 4.5f);
                 for(int r=0; r<4; r++) {
                     for(int c=0; c<4; c++) {
-                        if(SHAPES[info.type][r][c]) {
+                        if(def.shape[r][c]) {
                             SDL_FRect rect = {next_offset_x + c * next_cell_size, current_next_y + r * next_cell_size, next_cell_size - 1.0f, next_cell_size - 1.0f};
-                            SDL_SetRenderDrawColor(app->renderer, 255, 0, 0, 255);
+                            SDL_SetRenderDrawColor(app->renderer, def.color.r, def.color.g, def.color.b, def.color.a);
                             SDL_RenderFillRect(app->renderer, &rect);
                             if (r == info.crystal_r && c == info.crystal_c) {
                                 SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
