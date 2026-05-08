@@ -397,20 +397,24 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         
         if (app->board1.shared_queue && app->net_client) {
             int next_index = app->net_client->get_global_next_index();
-            PieceInfo info = app->board1.shared_queue->get_piece_at(next_index);
             
-            for(int r=0; r<4; r++) {
-                for(int c=0; c<4; c++) {
-                    if(SHAPES[info.type][r][c]) {
-                        SDL_FRect rect = {next_offset_x + c * next_cell_size, next_offset_y + r * next_cell_size, next_cell_size - 1.0f, next_cell_size - 1.0f};
-                        SDL_SetRenderDrawColor(app->renderer, 255, 0, 0, 255); // Red for next piece
-                        SDL_RenderFillRect(app->renderer, &rect);
+            for (int i = 0; i < 3; i++) {
+                PieceInfo info = app->board1.shared_queue->get_piece_at(next_index + i);
+                float current_next_y = next_offset_y + i * (next_cell_size * 4.5f);
+                
+                for(int r=0; r<4; r++) {
+                    for(int c=0; c<4; c++) {
+                        if(SHAPES[info.type][r][c]) {
+                            SDL_FRect rect = {next_offset_x + c * next_cell_size, current_next_y + r * next_cell_size, next_cell_size - 1.0f, next_cell_size - 1.0f};
+                            SDL_SetRenderDrawColor(app->renderer, 255, 0, 0, 255); // Red for next piece
+                            SDL_RenderFillRect(app->renderer, &rect);
 
-                        if (r == info.crystal_r && c == info.crystal_c) {
-                            SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255); // Yellow for crystal
-                            float c_margin = next_cell_size * 0.2f;
-                            SDL_FRect crect = {next_offset_x + c * next_cell_size + c_margin, next_offset_y + r * next_cell_size + c_margin, next_cell_size - c_margin * 2.0f, next_cell_size - c_margin * 2.0f};
-                            SDL_RenderFillRect(app->renderer, &crect);
+                            if (r == info.crystal_r && c == info.crystal_c) {
+                                SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255); // Yellow for crystal
+                                float c_margin = next_cell_size * 0.2f;
+                                SDL_FRect crect = {next_offset_x + c * next_cell_size + c_margin, current_next_y + r * next_cell_size + c_margin, next_cell_size - c_margin * 2.0f, next_cell_size - c_margin * 2.0f};
+                                SDL_RenderFillRect(app->renderer, &crect);
+                            }
                         }
                     }
                 }
