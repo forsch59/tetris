@@ -25,6 +25,7 @@ struct AppContext {
     bool skip_menu = true; // Flag for testing
     uint64_t match_start_time = 0;
     bool match_started = false;
+    uint64_t global_freeze_until = 0;
 };
 
 SDL_AppResult SDL_Fail() {
@@ -99,6 +100,8 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
                 app->board2.set_shared_queue(app->shared_queue, false);
             }
         } else if (app->state == GameState::PLAYING) {
+            if (SDL_GetTicks() < app->global_freeze_until) return SDL_APP_CONTINUE;
+
             if (event->key.key == SDLK_LEFT) {
                 app->board1.move(-1);
             } else if (event->key.key == SDLK_RIGHT) {
@@ -110,7 +113,21 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             } else if (event->key.key == SDLK_SPACE) {
                 app->board1.hard_drop();
             } else if (event->key.key == SDLK_LCTRL || event->key.key == SDLK_RCTRL) {
-                app->board1.activate_powerup();
+                if (app->net_client) {
+                    const auto& defs = app->net_client->get_power_defs();
+                    int best_id = -1;
+                    int max_cost = -1;
+                    for (const auto& d : defs) {
+                        if (app->board1.stored_powerups >= (int)d.cost && (int)d.cost > max_cost) {
+                            max_cost = d.cost;
+                            best_id = d.id;
+                        }
+                    }
+                    if (best_id != -1) {
+                        app->board1.stored_powerups -= max_cost;
+                        app->net_client->send_activate_powerup(best_id);
+                    }
+                }
             }
         }
     } else if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN || event->type == SDL_EVENT_FINGER_DOWN) {
@@ -159,7 +176,22 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             }
             // Powerup button hitbox
             if (y >= 600.0f && y <= 680.0f && x >= 410.0f && x <= 490.0f) {
-                app->board1.activate_powerup();
+                if (SDL_GetTicks() < app->global_freeze_until) return SDL_APP_CONTINUE;
+                if (app->net_client) {
+                    const auto& defs = app->net_client->get_power_defs();
+                    int best_id = -1;
+                    int max_cost = -1;
+                    for (const auto& d : defs) {
+                        if (app->board1.stored_powerups >= (int)d.cost && (int)d.cost > max_cost) {
+                            max_cost = d.cost;
+                            best_id = d.id;
+                        }
+                    }
+                    if (best_id != -1) {
+                        app->board1.stored_powerups -= max_cost;
+                        app->net_client->send_activate_powerup(best_id);
+                    }
+                }
             }
         }
     }
@@ -242,13 +274,32 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         Uint64 current_time = SDL_GetTicks();
         if (app->net_client) {
             app->net_client->update();
+
+            // Process powerup events
+            auto events = app->net_client->get_powerup_events();
+            for (const auto& ev : events) {
+                const auto& defs = app->net_client->get_power_defs();
+                for (const auto& d : defs) {
+                    if (d.id == ev.power_id) {
+                        app->global_freeze_until = SDL_GetTicks() + d.freeze_time_ms;
+                        bool is_activator = (ev.activator_id == app->net_client->get_my_id());
+                        bool target_me = (d.target == 0 && is_activator) || (d.target == 1 && !is_activator);
+                        if (target_me) {
+                            app->board1.apply_power_effect(d.effect_type, d.effect_param);
+                        }
+                        break;
+                    }
+                }
+            }
         }
         
         app->board1.process_network();
         app->board2.process_network();
 
-        app->board1.tick(current_time);
-        app->board2.tick(current_time);
+        if (current_time >= app->global_freeze_until) {
+            app->board1.tick(current_time);
+            app->board2.tick(current_time);
+        }
         
         uint64_t elapsed_ms = 0;
         if (app->net_client && app->net_client->is_opponent_ready()) {
@@ -275,7 +326,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 
         // Update logic
         static Uint64 last_time = 0;
-        if (current_time - last_time > drop_interval) {
+        if (current_time >= app->global_freeze_until && current_time - last_time > drop_interval) {
             app->board1.update();
             app->board2.update(); // Doesn't move if inactive, just drops
             last_time = current_time;
@@ -312,22 +363,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 SDL_SetRenderDrawColor(app->renderer, 255, 165, 0, 255);
                 SDL_RenderDebugTextFormat(app->renderer, 5.0f, 45.0f, "%s", "Weak Connection!");
             }
-            static uint32_t powerup_recv_msg_until = 0;
-            static uint32_t powerup_sent_msg_until = 0;
-            if (app->net_client->has_received_powerup()) {
-                powerup_recv_msg_until = SDL_GetTicks() + 2000;
-            }
-            if (app->net_client->has_sent_powerup()) {
-                powerup_sent_msg_until = SDL_GetTicks() + 2000;
-            }
 
-            if (SDL_GetTicks() < powerup_recv_msg_until) {
-                SDL_SetRenderDrawColor(app->renderer, 255, 0, 255, 255);
-                SDL_RenderDebugTextFormat(app->renderer, 5.0f, 65.0f, "%s", "RECEIVING POWER!");
-            }
-            if (SDL_GetTicks() < powerup_sent_msg_until) {
+            if (SDL_GetTicks() < app->global_freeze_until) {
                 SDL_SetRenderDrawColor(app->renderer, 0, 255, 255, 255);
-                SDL_RenderDebugTextFormat(app->renderer, 5.0f, 85.0f, "%s", "SENDING POWERUP!");
+                SDL_RenderDebugTextFormat(app->renderer, 5.0f, 65.0f, "%s", "POWER ACTIVE - FROZEN!");
             }
         }
         SDL_SetRenderScale(app->renderer, 1.0f, 1.0f);

@@ -19,7 +19,8 @@ PKT_NAMES = {
     10: "C_GAME_OVER",
     11: "S_GAME_OVER",
     12: "C_ACTIVATE_POWERUP",
-    13: "S_POWERUP_SIGNAL"
+    13: "S_POWERUP_SIGNAL",
+    14: "S_SYNC_POWERS"
 }
 
 C_CONNECT = 1
@@ -35,6 +36,17 @@ C_GAME_OVER = 10
 S_GAME_OVER = 11
 C_ACTIVATE_POWERUP = 12
 S_POWERUP_SIGNAL = 13
+S_SYNC_POWERS = 14
+
+# Power Definitions
+POWER_REMOVE_ROW = 1
+POWER_ADD_ROW = 2
+
+POWERS = [
+    # ID, Cost, FreezeTimeMS, Target (0:Self, 1:Opp), Effect (1:Rem, 2:Add), Param
+    (1, 1, 1000, 0, POWER_REMOVE_ROW, 1),
+    (2, 2, 2000, 1, POWER_ADD_ROW, 1),
+]
 
 # Packet Structures (Little Endian)
 # All packets are prefixed with a uint16 length (excluding the length field itself)
@@ -100,6 +112,15 @@ class TetrisServer:
                     
                     if client_count == 2:
                         print("MATCH: 2 clients reached, starting countdown...", flush=True)
+                        
+                        # Send Power Sync before starting
+                        for i, c in enumerate(self.clients):
+                            for p in POWERS:
+                                # Packet format: Header(6) + ID(2) + Cost(2) + Freeze(4) + Target(1) + Effect(1) + Param(1) = 17 bytes
+                                payload = struct.pack("<BBIHHIBBB", S_SYNC_POWERS, i+1, 0, p[0], p[1], p[2], p[3], p[4], p[5])
+                                header = struct.pack("<H", len(payload))
+                                c.sendall(header + payload)
+
                         inputs.remove(self.server_sock)
                         self.countdown = 2 # 2 second timer as requested
                         self.last_tick = 0 # trigger immediately
@@ -164,9 +185,10 @@ class TetrisServer:
             for c in self.clients:
                 self.send_packet(c, COMMAND_FMT, S_GAME_OVER, cid, 0, 0)
         elif p_type == C_ACTIVATE_POWERUP:
-            print(f"POWERUP: Client {cid} activated a powerup!", flush=True)
+            power_id = struct.unpack_from("<H", data, 6)[0]
+            print(f"POWERUP: Client {cid} activated power ID {power_id}!", flush=True)
             for c in self.clients:
-                self.send_packet(c, COMMAND_FMT, S_POWERUP_SIGNAL, cid, 0, 0)
+                self.send_packet(c, COMMAND_FMT, S_POWERUP_SIGNAL, cid, 0, power_id)
         elif p_type == C_STATE_UPDATE:
             # Broadcast to other client
             if len(data) >= 112:

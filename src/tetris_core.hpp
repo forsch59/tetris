@@ -378,10 +378,39 @@ public:
         }
     }
 
-    void activate_powerup() {
-        if (stored_powerups > 0 && shared_queue && shared_queue->net) {
-            shared_queue->net->send_activate_powerup();
-            stored_powerups = 0;
+    void apply_power_effect(int effect_type, int param) {
+        if (effect_type == 1) { // REMOVE_ROW
+            for (int i = 0; i < param; ++i) {
+                // Remove bottom row
+                for (int y = HEIGHT - 1; y > 0; --y) {
+                    grid[y] = grid[y - 1];
+                }
+                for (int x = 0; x < WIDTH; ++x) {
+                    grid[0][x].color = 0;
+                    grid[0][x].has_crystal = false;
+                }
+            }
+        } else if (effect_type == 2) { // ADD_ROW
+            for (int i = 0; i < param; ++i) {
+                // Shift up
+                for (int y = 0; y < HEIGHT - 1; ++y) {
+                    grid[y] = grid[y + 1];
+                }
+                // Add garbage row at bottom
+                for (int x = 0; x < WIDTH; ++x) {
+                    grid[HEIGHT - 1][x].color = (x == (int)(SDL_GetTicks() % WIDTH)) ? 0 : 7; // Simple garbage with one hole
+                    grid[HEIGHT - 1][x].has_crystal = false;
+                }
+            }
+        }
+        
+        // After shifting the grid, we must ensure current piece is still valid
+        if (check_collision()) {
+            // If shifting caused collision, try to nudge piece up
+            current_piece.y--;
+            if (check_collision()) {
+                // If still colliding, it might stay colliding until moved
+            }
         }
     }
 

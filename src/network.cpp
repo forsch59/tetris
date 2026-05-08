@@ -143,9 +143,25 @@ void NetworkClient::handle_packet(const uint8_t* data, int len) {
             break;
         }
         case PacketType::S_POWERUP_SIGNAL: {
-            if (header->client_id != my_id) {
-                powerup_received = true;
-                SDL_Log("[NET %d] POWERUP signal received from opponent", CLIENT_ID);
+            if (len >= (int)sizeof(CommandPacket)) {
+                const CommandPacket* p = (const CommandPacket*)data;
+                power_events.push_back({header->client_id, p->data});
+                SDL_Log("[NET %d] POWERUP signal received: Activator=%d, ID=%d", CLIENT_ID, header->client_id, p->data);
+            }
+            break;
+        }
+        case PacketType::S_SYNC_POWERS: {
+            if (len >= (int)sizeof(SyncPowerPacket)) {
+                const SyncPowerPacket* p = (const SyncPowerPacket*)data;
+                PowerDef def;
+                def.id = p->id;
+                def.cost = p->cost;
+                def.freeze_time_ms = p->freeze_time_ms;
+                def.target = p->target;
+                def.effect_type = p->effect_type;
+                def.effect_param = p->effect_param;
+                power_defs.push_back(def);
+                SDL_Log("[NET %d] Received Power Definition: ID=%d, Cost=%d, Freeze=%d", CLIENT_ID, def.id, def.cost, def.freeze_time_ms);
             }
             break;
         }
@@ -188,16 +204,14 @@ void NetworkClient::send_game_over() {
     send_packet(&p, sizeof(p));
 }
 
-void NetworkClient::send_activate_powerup() {
+void NetworkClient::send_activate_powerup(uint16_t power_id) {
     if (!connected) return;
     CommandPacket p;
     p.header.type = PacketType::C_ACTIVATE_POWERUP;
     p.header.client_id = my_id;
     p.header.sequence = sequence_counter++;
-    p.data = 0;
-    if (send_packet(&p, sizeof(p))) {
-        powerup_sent = true;
-    }
+    p.data = power_id;
+    send_packet(&p, sizeof(p));
 }
 
 void NetworkClient::send_state(int8_t type, int8_t rot, int8_t x, int8_t y, uint16_t crystal_mask, const uint8_t* grid_data) {

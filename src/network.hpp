@@ -21,7 +21,8 @@ enum class PacketType : uint8_t {
     C_GAME_OVER = 10,      // Client says I lost
     S_GAME_OVER = 11,      // Server says someone lost
     C_ACTIVATE_POWERUP = 12, // Client activates a powerup
-    S_POWERUP_SIGNAL = 13   // Server signals a powerup was activated
+    S_POWERUP_SIGNAL = 13,   // Server signals a powerup was activated
+    S_SYNC_POWERS = 14       // Server sends power definitions
 };
 
 struct PacketHeader {
@@ -46,11 +47,35 @@ struct GameStatePacket {
     uint8_t grid[100]; // 10x20 grid, 4 bits per cell = 100 bytes
 };
 
+struct SyncPowerPacket {
+    PacketHeader header;
+    uint16_t id;
+    uint16_t cost;
+    uint32_t freeze_time_ms;
+    uint8_t target;
+    uint8_t effect_type;
+    uint8_t effect_param;
+};
+
 #pragma pack(pop)
 
 static_assert(sizeof(PacketHeader) == 6, "PacketHeader size mismatch");
 static_assert(sizeof(CommandPacket) == 8, "CommandPacket size mismatch");
 static_assert(sizeof(GameStatePacket) == 112, "GameStatePacket size mismatch");
+
+struct PowerDef {
+    uint16_t id;
+    uint16_t cost;
+    uint32_t freeze_time_ms;
+    uint8_t target; // 0=Self, 1=Opp
+    uint8_t effect_type;
+    uint8_t effect_param;
+};
+
+struct PowerEvent {
+    uint8_t activator_id;
+    uint16_t power_id;
+};
 
 class NetworkClient {
 public:
@@ -63,7 +88,7 @@ public:
     void queue_lock_action();
     void send_game_over();
     void send_state(int8_t type, int8_t rot, int8_t x, int8_t y, uint16_t crystal_mask, const uint8_t* grid_data);
-    void send_activate_powerup();
+    void send_activate_powerup(uint16_t power_id);
 
     bool is_connected() const { return connected; }
     bool is_opponent_ready() const { return opponent_ready; }
@@ -73,16 +98,15 @@ public:
     bool has_weak_connection() const { return weak_conn; }
     int get_countdown() const { return countdown_val; }
     int get_global_next_index() const { return global_next_index; }
-    bool has_received_powerup() {
-        bool val = powerup_received;
-        powerup_received = false;
-        return val;
+    uint8_t get_my_id() const { return my_id; }
+
+    std::vector<PowerEvent> get_powerup_events() {
+        auto evs = power_events;
+        power_events.clear();
+        return evs;
     }
-    bool has_sent_powerup() {
-        bool val = powerup_sent;
-        powerup_sent = false;
-        return val;
-    }
+    
+    const std::vector<PowerDef>& get_power_defs() const { return power_defs; }
     
     uint32_t get_seed() const { return seed; }
     int get_claimed_index() {
@@ -108,8 +132,8 @@ private:
     uint8_t my_id = 0;
     int countdown_val = -1;
     int global_next_index = 0;
-    bool powerup_received = false;
-    bool powerup_sent = false;
+    std::vector<PowerDef> power_defs;
+    std::vector<PowerEvent> power_events;
 
     uint8_t recv_buf[4096];
     int recv_buf_len = 0;
