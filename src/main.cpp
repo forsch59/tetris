@@ -366,8 +366,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     SDL_FRect rect = {offset_x + x * cell_size, y_offset + y * cell_size, cell_size - 1.0f, cell_size - 1.0f};
                     int color_idx = board.grid[y][x].color;
                     if (color_idx != 0) {
-                        const auto& c = TETROMINO_DEFS[color_idx].color;
-                        SDL_SetRenderDrawColor(app->renderer, c.r, c.g, c.b, c.a);
+                        // Locked blocks are beige
+                        SDL_SetRenderDrawColor(app->renderer, 225, 215, 185, 255);
                         SDL_RenderFillRect(app->renderer, &rect);
                         if (board.grid[y][x].has_crystal) {
                             SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
