@@ -23,6 +23,8 @@ struct AppContext {
     SDL_AppResult app_quit = SDL_APP_CONTINUE;
     GameState state = GameState::MENU;
     bool skip_menu = true; // Flag for testing
+    uint64_t match_start_time = 0;
+    bool match_started = false;
 };
 
 SDL_AppResult SDL_Fail() {
@@ -248,9 +250,32 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         app->board1.tick(current_time);
         app->board2.tick(current_time);
         
+        uint64_t elapsed_ms = 0;
+        if (app->net_client && app->net_client->is_opponent_ready()) {
+            if (!app->match_started) {
+                app->match_start_time = current_time;
+                app->match_started = true;
+            }
+            elapsed_ms = current_time - app->match_start_time;
+        } else {
+            app->match_started = false;
+        }
+
+        int level = (int)(elapsed_ms / 30000) + 1;
+        uint64_t drop_interval = 500;
+        if (level > 1) {
+            // Scale from 500ms (Level 1) to 50ms (Level 20)
+            // (500 - 50) / (20 - 1) = 450 / 19 ≈ 23.68ms per level
+            if (level >= 20) {
+                drop_interval = 50;
+            } else {
+                drop_interval = 500 - (level - 1) * 23;
+            }
+        }
+
         // Update logic
         static Uint64 last_time = 0;
-        if (current_time - last_time > 500) {
+        if (current_time - last_time > drop_interval) {
             app->board1.update();
             app->board2.update(); // Doesn't move if inactive, just drops
             last_time = current_time;
@@ -400,6 +425,14 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
         SDL_RenderDebugTextFormat(app->renderer, next_offset_x, next_offset_y - 20.0f, "Next:");
         
+        // Render Level and Time info
+        float info_y = next_offset_y + 15 * 20.0f; // Below the next piece stack
+        SDL_RenderDebugTextFormat(app->renderer, next_offset_x, info_y, "Level: %d", level);
+        
+        int sec = (int)(elapsed_ms / 1000) % 60;
+        int min = (int)(elapsed_ms / 60000);
+        SDL_RenderDebugTextFormat(app->renderer, next_offset_x, info_y + 20.0f, "Time: %02d:%02d", min, sec);
+
         if (app->board1.shared_queue && app->net_client) {
             int next_index = app->net_client->get_global_next_index();
             
