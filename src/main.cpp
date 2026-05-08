@@ -237,16 +237,19 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         SDL_RenderDebugTextFormat(app->renderer, 50.0f, 120.0f, "%s", "Press ENTER to Restart");
         SDL_SetRenderScale(app->renderer, 1.0f, 1.0f);
     } else if (app->state == GameState::PLAYING) {
+        Uint64 current_time = SDL_GetTicks();
         if (app->net_client) {
             app->net_client->update();
         }
         
         app->board1.process_network();
         app->board2.process_network();
+
+        app->board1.tick(current_time);
+        app->board2.tick(current_time);
         
         // Update logic
         static Uint64 last_time = 0;
-        Uint64 current_time = SDL_GetTicks();
         if (current_time - last_time > 500) {
             app->board1.update();
             app->board2.update(); // Doesn't move if inactive, just drops

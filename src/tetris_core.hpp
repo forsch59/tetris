@@ -97,6 +97,11 @@ public:
     bool board_active = true;
     bool spawn_request_pending = false;
 
+    bool is_locking = false;
+    uint64_t lock_timer_start = 0;
+    uint64_t current_lock_delay = 500;
+    static constexpr uint64_t LOCK_DECAY = 50;
+
     std::shared_ptr<SharedPieceQueue> shared_queue;
 
     TetrisBoard() {}
@@ -275,6 +280,9 @@ public:
         PieceInfo info = shared_queue->get_piece_at(index);
         current_piece = {info.type + 1, 0, WIDTH / 2 - 2, 0};
         
+        is_locking = false;
+        current_lock_delay = 500;
+        
         apply_rotation();
         
         if (check_collision()) {
@@ -290,10 +298,27 @@ public:
         current_piece.y++;
         if (check_collision()) {
             current_piece.y--;
-            lock_piece();
-            clear_lines();
-            if (board_active) {
-                request_spawn();
+            if (!is_locking) {
+                is_locking = true;
+                lock_timer_start = SDL_GetTicks();
+            }
+        } else {
+            // Moved down successfully, if we were locking, stop it (fell off a ledge)
+            is_locking = false;
+        }
+    }
+
+    void tick(uint64_t now) {
+        if (!board_active || game_over || waiting_for_spawn) return;
+        
+        if (is_locking) {
+            if (now - lock_timer_start >= current_lock_delay) {
+                lock_piece();
+                clear_lines();
+                is_locking = false;
+                if (board_active) {
+                    request_spawn();
+                }
             }
         }
     }
@@ -301,7 +326,11 @@ public:
     void move(int dx) {
         if (waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready()) return;
         current_piece.x += dx;
-        if (check_collision()) current_piece.x -= dx;
+        if (check_collision()) {
+            current_piece.x -= dx;
+        } else {
+            handle_move_reset();
+        }
     }
 
     void rotate() {
@@ -312,6 +341,27 @@ public:
         if (check_collision()) {
             current_piece.rotation = old_rot;
             apply_rotation();
+        } else {
+            handle_move_reset();
+        }
+    }
+
+    void handle_move_reset() {
+        // Check if we are on the ground
+        current_piece.y++;
+        bool on_ground = check_collision();
+        current_piece.y--;
+
+        if (on_ground) {
+            is_locking = true;
+            lock_timer_start = SDL_GetTicks();
+            if (current_lock_delay > LOCK_DECAY) {
+                current_lock_delay -= LOCK_DECAY;
+            } else {
+                current_lock_delay = 0;
+            }
+        } else {
+            is_locking = false;
         }
     }
 
