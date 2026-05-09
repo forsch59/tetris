@@ -20,7 +20,9 @@ PKT_NAMES = {
     11: "S_GAME_OVER",
     12: "C_ACTIVATE_POWERUP",
     13: "S_POWERUP_SIGNAL",
-    14: "S_SYNC_POWERS"
+    14: "S_SYNC_POWERS",
+    15: "C_SEND_GARBAGE",
+    16: "S_GARBAGE_SIGNAL"
 }
 
 C_CONNECT = 1
@@ -37,6 +39,8 @@ S_GAME_OVER = 11
 C_ACTIVATE_POWERUP = 12
 S_POWERUP_SIGNAL = 13
 S_SYNC_POWERS = 14
+C_SEND_GARBAGE = 15
+S_GARBAGE_SIGNAL = 16
 
 # Power Definitions
 POWER_REMOVE_ROW = 1
@@ -189,6 +193,12 @@ class TetrisServer:
             print(f"POWERUP: Client {cid} activated power ID {power_id}!", flush=True)
             for c in self.clients:
                 self.send_packet(c, COMMAND_FMT, S_POWERUP_SIGNAL, cid, 0, power_id)
+        elif p_type == C_SEND_GARBAGE:
+            lines = struct.unpack_from("<H", data, 6)[0]
+            print(f"GARBAGE: Client {cid} sending {lines} lines to opponent!", flush=True)
+            for c in self.clients:
+                if c is not s:
+                    self.send_packet(c, COMMAND_FMT, S_GARBAGE_SIGNAL, cid, 0, lines)
         elif p_type == C_STATE_UPDATE:
             # Broadcast to other client
             if len(data) >= 112:

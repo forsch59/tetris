@@ -165,6 +165,14 @@ void NetworkClient::handle_packet(const uint8_t* data, int len) {
             }
             break;
         }
+        case PacketType::S_GARBAGE_SIGNAL: {
+            if (len >= (int)sizeof(CommandPacket)) {
+                const CommandPacket* p = (const CommandPacket*)data;
+                pending_garbage += p->data;
+                SDL_Log("[NET %d] GARBAGE signal received: %d lines", CLIENT_ID, p->data);
+            }
+            break;
+        }
         default:
             break;
     }
@@ -211,6 +219,16 @@ void NetworkClient::send_activate_powerup(uint16_t power_id) {
     p.header.client_id = my_id;
     p.header.sequence = sequence_counter++;
     p.data = power_id;
+    send_packet(&p, sizeof(p));
+}
+
+void NetworkClient::send_garbage(int lines) {
+    if (!connected) return;
+    CommandPacket p;
+    p.header.type = PacketType::C_SEND_GARBAGE;
+    p.header.client_id = my_id;
+    p.header.sequence = sequence_counter++;
+    p.data = (uint16_t)lines;
     send_packet(&p, sizeof(p));
 }
 

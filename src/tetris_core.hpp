@@ -189,6 +189,11 @@ public:
     void process_network() {
         if (!shared_queue || !shared_queue->net) return;
 
+        int pending_garbage = shared_queue->net->get_pending_garbage();
+        if (pending_garbage > 0) {
+            apply_power_effect(2, pending_garbage);
+        }
+
         if (shared_queue->net->is_game_over()) {
             game_over = true;
         }
@@ -402,14 +407,16 @@ public:
                 }
             }
         } else if (effect_type == 2) { // ADD_ROW
+            std::uniform_int_distribution<int> hole_dist(0, WIDTH - 1);
             for (int i = 0; i < param; ++i) {
                 // Shift up
                 for (int y = 0; y < HEIGHT - 1; ++y) {
                     grid[y] = grid[y + 1];
                 }
                 // Add garbage row at bottom
+                int hole_x = hole_dist(shared_queue->rng);
                 for (int x = 0; x < WIDTH; ++x) {
-                    grid[HEIGHT - 1][x].color = (x == (int)(SDL_GetTicks() % WIDTH)) ? 0 : 7; // Simple garbage with one hole
+                    grid[HEIGHT - 1][x].color = (x == hole_x) ? 0 : 7;
                     grid[HEIGHT - 1][x].has_crystal = false;
                 }
             }
@@ -457,10 +464,12 @@ public:
     }
 
     void clear_lines() {
+        int lines_cleared = 0;
         for(int y=HEIGHT-1; y>=0; y--) {
             bool full = true;
             for(int x=0; x<WIDTH; x++) if(grid[y][x].color == 0) full = false;
             if(full) {
+                lines_cleared++;
                 for(int x=0; x<WIDTH; x++) {
                     if(grid[y][x].has_crystal) {
                         crystals++;
@@ -470,6 +479,17 @@ public:
                 for(int yy=y; yy>0; yy--) grid[yy] = grid[yy-1];
                 for(int x=0; x<WIDTH; x++) { grid[0][x].color = 0; grid[0][x].has_crystal = false; }
                 y++;
+            }
+        }
+
+        if (lines_cleared >= 2 && board_active && shared_queue && shared_queue->net) {
+            int garbage_sent = 0;
+            if (lines_cleared == 2) garbage_sent = 1;
+            else if (lines_cleared == 3) garbage_sent = 2;
+            else if (lines_cleared == 4) garbage_sent = 4;
+            
+            if (garbage_sent > 0) {
+                shared_queue->net->send_garbage(garbage_sent);
             }
         }
     }

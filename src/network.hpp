@@ -22,7 +22,9 @@ enum class PacketType : uint8_t {
     S_GAME_OVER = 11,      // Server says someone lost
     C_ACTIVATE_POWERUP = 12, // Client activates a powerup
     S_POWERUP_SIGNAL = 13,   // Server signals a powerup was activated
-    S_SYNC_POWERS = 14       // Server sends power definitions
+    S_SYNC_POWERS = 14,      // Server sends power definitions
+    C_SEND_GARBAGE = 15,     // Client sends garbage to opponent
+    S_GARBAGE_SIGNAL = 16    // Server notifies about incoming garbage
 };
 
 struct PacketHeader {
@@ -89,6 +91,7 @@ public:
     void send_game_over();
     void send_state(int8_t type, int8_t rot, int8_t x, int8_t y, uint16_t crystal_mask, const uint8_t* grid_data);
     void send_activate_powerup(uint16_t power_id);
+    void send_garbage(int lines);
 
     bool is_connected() const { return connected; }
     bool is_opponent_ready() const { return opponent_ready; }
@@ -99,6 +102,12 @@ public:
     int get_countdown() const { return countdown_val; }
     int get_global_next_index() const { return global_next_index; }
     uint8_t get_my_id() const { return my_id; }
+
+    int get_pending_garbage() {
+        int g = pending_garbage;
+        pending_garbage = 0;
+        return g;
+    }
 
     std::vector<PowerEvent> get_powerup_events() {
         auto evs = power_events;
@@ -132,6 +141,7 @@ private:
     uint8_t my_id = 0;
     int countdown_val = -1;
     int global_next_index = 0;
+    int pending_garbage = 0;
     std::vector<PowerDef> power_defs;
     std::vector<PowerEvent> power_events;
 
