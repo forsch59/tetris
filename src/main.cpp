@@ -1,6 +1,8 @@
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <cstdarg>
+#include <cstdio>
 #include "tetris_core.hpp"
 
 #ifndef CLIENT_ID
@@ -12,6 +14,68 @@ enum class GameState {
     PLAYING,
     GAME_OVER
 };
+
+struct UILayout {
+    SDL_FRect section1, section2, section3;
+    SDL_FRect menu_btn;
+    SDL_FRect opp_grid;
+    SDL_FRect rot_btn;
+    SDL_FRect left_btn;
+    SDL_FRect next_area;
+    SDL_FRect pwr_btn;
+    SDL_FRect drop_btn;
+    SDL_FRect right_btn;
+    float padding;
+    float section_padding;
+    float text_scale;
+};
+
+static UILayout CalculateLayout(int render_w, int render_h) {
+    UILayout layout;
+    layout.padding = SDL_min((float)render_w, (float)render_h) * 0.015f; 
+    layout.section_padding = layout.padding * 0.5f; 
+    
+    float s2_w = (float)render_w * 0.70f;
+    float s1_w = (float)render_w * 0.15f;
+    float s3_w = (float)render_w * 0.15f;
+    
+    layout.section1 = { layout.section_padding, layout.section_padding, s1_w - layout.section_padding * 2.0f, (float)render_h - layout.section_padding * 2.0f };
+    layout.section2 = { s1_w, layout.section_padding, s2_w, (float)render_h - layout.section_padding * 2.0f };
+    layout.section3 = { s1_w + s2_w + layout.section_padding, layout.section_padding, s3_w - layout.section_padding * 2.0f, (float)render_h - layout.section_padding * 2.0f };
+    
+    layout.text_scale = (layout.section1.w / 100.0f);
+    if (layout.text_scale < 0.4f) layout.text_scale = 0.4f;
+
+    float item_w = layout.section1.w;
+    
+    // Section 1: Top down relative to section
+    layout.menu_btn = { layout.section1.x, layout.section1.y, item_w, (float)render_h * 0.06f };
+    
+    // Section 1: Bottom up relative to section
+    float btn_h = (float)render_h * 0.08f; // Make buttons proportional to screen height
+    layout.left_btn = { layout.section1.x, layout.section1.y + layout.section1.h - btn_h, item_w, btn_h };
+    layout.rot_btn = { layout.section1.x, layout.left_btn.y - layout.padding - btn_h, item_w, btn_h };
+    
+    // Opponent Grid in Section 1
+    float timer_level_h = 40.0f * layout.text_scale;
+    float opp_y = layout.menu_btn.y + layout.menu_btn.h + layout.padding + timer_level_h + layout.padding;
+    float opp_h = layout.rot_btn.y - layout.padding - opp_y;
+    layout.opp_grid = { layout.section1.x, opp_y, item_w, opp_h };
+
+    // Section 3: Bottom up relative to section
+    float item_w3 = layout.section3.w;
+    float s3_x = layout.section3.x;
+    layout.right_btn = { s3_x, layout.section3.y + layout.section_padding + layout.section3.h - btn_h - layout.section_padding, item_w3, btn_h };
+    layout.drop_btn = { s3_x, layout.right_btn.y - layout.padding - btn_h, item_w3, btn_h };
+    layout.pwr_btn = { s3_x, layout.drop_btn.y - layout.padding - btn_h, item_w3, btn_h };
+    
+    // Section 3: Next area top down
+    float next_y = layout.section_padding;
+    float next_h = layout.pwr_btn.y - layout.padding - next_y;
+    layout.next_area = { s3_x, next_y, item_w3, next_h };
+
+    return layout;
+}
 
 struct AppContext {
     std::shared_ptr<NetworkClient> net_client;
@@ -38,6 +102,22 @@ SDL_AppResult SDL_Fail() {
     return SDL_APP_FAILURE;
 }
 
+static void RenderCenteredText(SDL_Renderer* renderer, float cx, float cy, float scale, const char* fmt, ...) {
+    char buf[256];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+
+    size_t len = SDL_strlen(buf);
+    float tw = len * 8.0f;
+    float th = 8.0f;
+
+    SDL_SetRenderScale(renderer, scale, scale);
+    SDL_RenderDebugText(renderer, (cx / scale) - (tw / 2.0f), (cy / scale) - (th / 2.0f), buf);
+    SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+}
+
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         return SDL_Fail();
@@ -56,6 +136,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 #if defined(ANDROID)
     window_flags |= SDL_WINDOW_FULLSCREEN;
 #else
+    window_flags |= SDL_WINDOW_RESIZABLE;
     window_w = 800;
     window_h = 800;
 #endif
@@ -161,58 +242,24 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         } else if (app->state == GameState::PLAYING) {
             int render_w, render_h;
             SDL_GetRenderOutputSize(app->renderer, &render_w, &render_h);
-            float center_panel_w = (float)render_w * 0.50f;
-            float left_panel_w = (float)render_w * 0.25f;
-            float right_panel_w = (float)render_w * 0.25f;
+            UILayout layout = CalculateLayout(render_w, render_h);
 
-            if (center_panel_w > (float)render_h * 0.6f) {
-                center_panel_w = (float)render_h * 0.6f;
-                left_panel_w = (render_w - center_panel_w) * 0.5f;
-                right_panel_w = left_panel_w;
-            }
+            auto in_rect = [&](const SDL_FRect& r) {
+                return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+            };
 
-            float ui_padding = SDL_min((float)render_w, (float)render_h) * 0.02f;
-            float menu_btn_w = left_panel_w - ui_padding * 2.0f;
-            float menu_btn_h = (float)render_h * 0.05f;
-            float menu_btn_x = ui_padding;
-            float menu_btn_y = ui_padding;
-            
-            if (x >= menu_btn_x && x <= menu_btn_x + menu_btn_w && y >= menu_btn_y && y <= menu_btn_y + menu_btn_h) {
+            if (in_rect(layout.menu_btn)) {
                 app->state = GameState::MENU;
                 return SDL_APP_CONTINUE;
             }
 
-            float btn_size = SDL_min(left_panel_w, right_panel_w) * 0.45f;
-            float btn_spacing = ui_padding;
-            
-            float left_col_x = ui_padding;
-            float right_col_x = (float)render_w - btn_size - ui_padding;
-            
-            // Elements on the left should be top-left aligned
-            // Elements on the right should be top-right aligned
-            
-            // Left Panel Buttons (Left, Rotate) - below opponent grid or just bottom?
-            // "alignment should be top left for everything left of the grid"
-            // Let's stack them at the bottom of the left panel.
-            float left_btn_y = (float)render_h - btn_size - ui_padding;
-            float rot_btn_y = left_btn_y - btn_size - btn_spacing;
-
-            // Right Panel Buttons (Right, Drop, Power)
-            float right_btn_y = (float)render_h - btn_size - ui_padding;
-            float drop_btn_y = right_btn_y - btn_size - btn_spacing;
-            float pwr_btn_y = drop_btn_y - btn_size - btn_spacing;
-
-            auto in_rect = [&](float rx, float ry, float rw, float rh) {
-                return x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
-            };
-
-            if (in_rect(left_col_x, left_btn_y, btn_size, btn_size)) {
+            if (in_rect(layout.left_btn)) {
                 app->board1.move(-1);
-            } else if (in_rect(right_col_x, right_btn_y, btn_size, btn_size)) {
+            } else if (in_rect(layout.right_btn)) {
                 app->board1.move(1);
-            } else if (in_rect(left_col_x, rot_btn_y, btn_size, btn_size)) {
+            } else if (in_rect(layout.rot_btn)) {
                 app->board1.rotate();
-            } else if (in_rect(right_col_x, drop_btn_y, btn_size, btn_size)) {
+            } else if (in_rect(layout.drop_btn)) {
                 uint64_t now = SDL_GetTicks();
                 if (now - app->last_down_press_time < 250) { // Double tap
                     app->board1.hard_drop();
@@ -224,7 +271,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
                     app->last_soft_drop_time = now;
                 }
                 app->last_down_press_time = now;
-            } else if (in_rect(right_col_x, pwr_btn_y, btn_size, btn_size)) {
+            } else if (in_rect(layout.pwr_btn)) {
                 if (SDL_GetTicks() < app->global_freeze_until) return SDL_APP_CONTINUE;
                 if (app->net_client) {
                     const auto& defs = app->net_client->get_power_defs();
@@ -295,44 +342,42 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     if (ui_text_scale < 0.4f) ui_text_scale = 0.4f;
 
     if (app->state == GameState::MENU) {
-        SDL_SetRenderScale(app->renderer, 2.0f * ui_scale, 2.0f * ui_scale);
+        float menu_text_scale = 2.0f * ui_scale;
 #if CLIENT_ID == 1
-        SDL_RenderDebugTextFormat(app->renderer, 50.0f, 100.0f, "%s", "CLIENT 1 - TETRIS BATTLE");
+        RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.3f, menu_text_scale, "CLIENT 1 - TETRIS BATTLE");
 #elif CLIENT_ID == 2
-        SDL_RenderDebugTextFormat(app->renderer, 50.0f, 100.0f, "%s", "CLIENT 2 - TETRIS BATTLE");
+        RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.3f, menu_text_scale, "CLIENT 2 - TETRIS BATTLE");
 #else
-        SDL_RenderDebugTextFormat(app->renderer, 50.0f, 100.0f, "%s", "TETRIS BATTLE");
+        RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.3f, menu_text_scale, "TETRIS BATTLE");
 #endif
-        SDL_RenderDebugTextFormat(app->renderer, 50.0f, 120.0f, "%s", "Press ENTER to Start");
+        RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.4f, menu_text_scale, "Press ENTER to Start");
 
         SDL_SetRenderDrawColor(app->renderer, 200, 50, 50, 255);
-        SDL_SetRenderScale(app->renderer, 1.0f, 1.0f);
-        SDL_FRect exit_btn = {50.0f * ui_scale, 150.0f * ui_scale, 200.0f * ui_scale, 60.0f * ui_scale};
+        SDL_FRect exit_btn = {render_w * 0.5f - 100.0f * ui_scale, render_h * 0.6f, 200.0f * ui_scale, 60.0f * ui_scale};
         SDL_RenderFillRect(app->renderer, &exit_btn);
         
         SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
-        SDL_SetRenderScale(app->renderer, 2.0f * ui_scale, 2.0f * ui_scale);
-        SDL_RenderDebugTextFormat(app->renderer, 45.0f, 85.0f, "%s", "EXIT");
-        SDL_SetRenderScale(app->renderer, 1.0f, 1.0f);
+        RenderCenteredText(app->renderer, exit_btn.x + exit_btn.w * 0.5f, exit_btn.y + exit_btn.h * 0.5f, menu_text_scale, "EXIT");
 
     } else if (app->state == GameState::GAME_OVER) {
-        SDL_SetRenderScale(app->renderer, 2.0f * ui_scale, 2.0f * ui_scale);
+        float go_text_scale = 2.0f * ui_scale;
         if (app->net_client && app->net_client->is_game_over()) {
             if (app->net_client->am_i_winner()) {
                 SDL_SetRenderDrawColor(app->renderer, 0, 255, 0, 255);
-                SDL_RenderDebugTextFormat(app->renderer, 50.0f, 100.0f, "%s", "YOU WIN!");
+                RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.4f, go_text_scale, "YOU WIN!");
             } else {
                 SDL_SetRenderDrawColor(app->renderer, 255, 50, 50, 255);
-                SDL_RenderDebugTextFormat(app->renderer, 50.0f, 100.0f, "%s", "YOU LOSE!");
+                RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.4f, go_text_scale, "YOU LOSE!");
             }
         } else {
-            SDL_RenderDebugTextFormat(app->renderer, 50.0f, 100.0f, "%s", "GAME OVER!");
+            RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.4f, go_text_scale, "GAME OVER!");
         }
         SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
-        SDL_RenderDebugTextFormat(app->renderer, 50.0f, 120.0f, "%s", "Press ENTER to Restart");
-        SDL_SetRenderScale(app->renderer, 1.0f, 1.0f);
+        RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.5f, go_text_scale, "Press ENTER to Restart");
     } else if (app->state == GameState::PLAYING) {
         Uint64 current_time = SDL_GetTicks();
+        UILayout layout = CalculateLayout(render_w, render_h);
+
         if (app->net_client) {
             app->net_client->update();
             auto events = app->net_client->get_powerup_events();
@@ -370,6 +415,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         }
 
         int level = (int)(elapsed_ms / 30000) + 1;
+        static int last_logged_level = 0;
+        if (level != last_logged_level) {
+            SDL_Log("[GAME] Level changed to: %d", level);
+            last_logged_level = level;
+        }
+
         uint64_t drop_interval = 500;
         if (level > 1) {
             if (level >= 20) drop_interval = 50;
@@ -393,48 +444,41 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             }
         }
 
-        if (app->board1.game_over || app->board2.game_over) app->state = GameState::GAME_OVER;
+    if (app->board1.game_over || app->board2.game_over) app->state = GameState::GAME_OVER;
 
-        // Status info will be rendered last, centered over the board area
+    // Render section backgrounds
+    SDL_SetRenderDrawColor(app->renderer, 30, 30, 35, 255); // Darker left
+    SDL_RenderFillRect(app->renderer, &layout.section1);
+    SDL_SetRenderDrawColor(app->renderer, 45, 45, 50, 255); // Lighter center
+    SDL_RenderFillRect(app->renderer, &layout.section2);
+    SDL_SetRenderDrawColor(app->renderer, 30, 30, 35, 255); // Darker right
+    SDL_RenderFillRect(app->renderer, &layout.section3);
 
+    // Status info will be rendered last, centered over the board area
 
-        // Pre-calculate button positions so they can be used for relative layout
-        float btn_size = SDL_min(left_panel_w, right_panel_w) * 0.45f;
-        float btn_spacing = ui_padding;
-        
-        float left_col_x = ui_padding;
-        float right_col_x = (float)render_w - btn_size - ui_padding;
-
-        float left_btn_y = (float)render_h - btn_size - ui_padding;
-        float rot_btn_y = left_btn_y - btn_size - btn_spacing;
-
-        float right_btn_y = (float)render_h - btn_size - ui_padding;
-        float drop_btn_y = right_btn_y - btn_size - btn_spacing;
-        float pwr_btn_y = drop_btn_y - btn_size - btn_spacing;
-
-        float next_area_h = pwr_btn_y - ui_padding - 20.0f * ui_text_scale;
-
-        // Adjust draw_board to take panels into account
+    // Adjust draw_board to take panels into account
         // align_h: -1 = left, 0 = center, 1 = right
         // align_v: -1 = top, 0 = center, 1 = bottom
-        auto draw_board_rel = [&](TetrisBoard& board, float panel_x, float panel_y, float panel_w, float panel_h, int align_h = 0, int align_v = -1) {
-            float padding_x = ui_padding;
-            float padding_y = ui_padding;
-            float grid_area_w = panel_w - padding_x * 2.0f;
-            float grid_area_h = panel_h - padding_y * 2.0f;
+        auto draw_board_rel = [&](TetrisBoard& board, const SDL_FRect& area, int align_h = 0, int align_v = -1) {
+            float panel_x = area.x;
+            float panel_y = area.y;
+            float panel_w = area.w;
+            float panel_h = area.h;
+            float grid_area_w = panel_w;
+            float grid_area_h = panel_h;
             float cell_w = grid_area_w / TetrisBoard::WIDTH;
             float cell_h = grid_area_h / TetrisBoard::HEIGHT;
             float cell_size = (cell_w < cell_h) ? cell_w : cell_h;
             
             float offset_x;
-            if (align_h == -1) offset_x = panel_x + padding_x;
-            else if (align_h == 1) offset_x = panel_x + panel_w - padding_x - cell_size * TetrisBoard::WIDTH;
-            else offset_x = panel_x + padding_x + (grid_area_w - cell_size * TetrisBoard::WIDTH) / 2.0f;
+            if (align_h == -1) offset_x = panel_x;
+            else if (align_h == 1) offset_x = panel_x + panel_w - cell_size * TetrisBoard::WIDTH;
+            else offset_x = panel_x + (grid_area_w - cell_size * TetrisBoard::WIDTH) / 2.0f;
 
             float y_offset;
-            if (align_v == -1) y_offset = panel_y + padding_y;
-            else if (align_v == 1) y_offset = panel_y + panel_h - padding_y - cell_size * TetrisBoard::HEIGHT;
-            else y_offset = panel_y + padding_y + (grid_area_h - cell_size * TetrisBoard::HEIGHT) / 2.0f;
+            if (align_v == -1) y_offset = panel_y;
+            else if (align_v == 1) y_offset = panel_y + panel_h - cell_size * TetrisBoard::HEIGHT;
+            else y_offset = panel_y + (grid_area_h - cell_size * TetrisBoard::HEIGHT) / 2.0f;
 
             for (int y = 0; y < TetrisBoard::HEIGHT; ++y) {
                 for (int x = 0; x < TetrisBoard::WIDTH; ++x) {
@@ -475,71 +519,36 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             }
         };
 
-        draw_board_rel(app->board1, left_panel_w, 0.0f, center_panel_w, (float)render_h, 0);
+        draw_board_rel(app->board1, layout.section2, 0, 0);
 
-        // LEFT PANEL: MENU AND INFO - TOP LEFT ALIGNMENT
-        float menu_btn_w = left_panel_w - ui_padding * 2.0f;
-        float menu_btn_h = (float)render_h * 0.05f; // 5% of height
-        float menu_btn_x = ui_padding;
-        float menu_btn_y = ui_padding;
-
+        // SECTION 1 (Left) Rendering
         SDL_SetRenderDrawColor(app->renderer, 200, 50, 50, 255);
-        SDL_FRect play_exit_btn = {menu_btn_x, menu_btn_y, menu_btn_w, menu_btn_h};
-        SDL_RenderFillRect(app->renderer, &play_exit_btn);
+        SDL_RenderFillRect(app->renderer, &layout.menu_btn);
         
         SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
-        SDL_SetRenderScale(app->renderer, ui_text_scale, ui_text_scale);
         
         // Menu text in button
-        SDL_RenderDebugTextFormat(app->renderer, (menu_btn_x + ui_padding * 0.5f) / ui_text_scale, (menu_btn_y + (menu_btn_h - 12.0f * ui_text_scale) * 0.5f) / ui_text_scale, "%s", "MENU");
+        RenderCenteredText(app->renderer, layout.menu_btn.x + layout.menu_btn.w * 0.5f, layout.menu_btn.y + layout.menu_btn.h * 0.5f, layout.text_scale, "MENU");
         
-        float stacked_x = ui_padding / ui_text_scale;
-        float stacked_y = (menu_btn_y + menu_btn_h + ui_padding) / ui_text_scale;
+        float center_x1 = layout.section1.x + layout.section1.w * 0.5f;
+        float stacked_y = layout.menu_btn.y + layout.menu_btn.h + layout.padding + 10.0f * layout.text_scale;
 
-        // Client text
-#if CLIENT_ID == 1
-        SDL_RenderDebugTextFormat(app->renderer, stacked_x, stacked_y, "%s", "Client 1");
-#elif CLIENT_ID == 2
-        SDL_RenderDebugTextFormat(app->renderer, stacked_x, stacked_y, "%s", "Client 2");
-#else
-        SDL_RenderDebugTextFormat(app->renderer, stacked_x, stacked_y, "%s", "Tetris Battle");
-#endif
+        // Opponent grid
+        draw_board_rel(app->board2, layout.opp_grid, 0, 0);
 
-        // Level
-        SDL_RenderDebugTextFormat(app->renderer, stacked_x, stacked_y + 12.0f, "Level: %d", level);
-        
-        // Time
-        int sec = (int)(elapsed_ms / 1000) % 60;
-        int min = (int)(elapsed_ms / 60000);
-        SDL_RenderDebugTextFormat(app->renderer, stacked_x, stacked_y + 24.0f, "Time: %02d:%02d", min, sec);
-        
-        SDL_SetRenderScale(app->renderer, 1.0f, 1.0f);
+        // Section 1 Buttons
+        SDL_SetRenderDrawColor(app->renderer, 100, 100, 100, 255);
+        SDL_RenderFillRect(app->renderer, &layout.rot_btn);
+        SDL_RenderFillRect(app->renderer, &layout.left_btn);
 
-        // Opponent grid under time - TOP LEFT ALIGNMENT
-        float opp_grid_y = (stacked_y + 40.0f) * ui_text_scale;
-        float opp_grid_h = (float)render_h - opp_grid_y - ui_padding;
-        draw_board_rel(app->board2, 0.0f, opp_grid_y, left_panel_w, opp_grid_h, -1);
-
-        // RIGHT PANEL: NEXT PIECES - TOP RIGHT ALIGNMENT
-        float next_cell_size = (right_panel_w / 6.0f);
-        float next_offset_x = (float)render_w - ui_padding - next_cell_size * 4.0f;
-        float next_offset_y = ui_padding + 15.0f * ui_text_scale;
-        
-        SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
-        float next_text_scale = ui_text_scale;
-        SDL_SetRenderScale(app->renderer, next_text_scale, next_text_scale);
-        SDL_RenderDebugTextFormat(app->renderer, ((float)render_w - ui_padding) / next_text_scale - 40.0f, ui_padding / next_text_scale, "Next:");
-        SDL_SetRenderScale(app->renderer, 1.0f, 1.0f);
-
+        // SECTION 3 (Right) Rendering
+        // Next pieces
         if (app->board1.shared_queue && app->net_client) {
             int next_index = app->net_client->get_global_next_index();
             int num_next = 3;
-            // Adjust next piece size if it doesn't fit
-            float required_h = num_next * (next_cell_size * 4.5f);
-            if (required_h > next_area_h) {
-                next_cell_size *= (next_area_h / required_h);
-            }
-
+            float next_cell_size = (layout.next_area.w / 5.0f);
+            float next_offset_y = layout.next_area.y + 15.0f * layout.text_scale;
+            
             for (int i = 0; i < num_next; i++) {
                 PieceInfo info = app->board1.shared_queue->get_piece_at(next_index + i);
                 const auto& def = TETROMINO_DEFS[info.type + 1];
@@ -547,13 +556,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 for(int r=0; r<4; r++) {
                     for(int c=0; c<4; c++) {
                         if(def.shape[r][c]) {
-                            SDL_FRect rect = {next_offset_x + c * next_cell_size, current_next_y + r * next_cell_size, next_cell_size - 1.0f, next_cell_size - 1.0f};
+                            SDL_FRect rect = {layout.next_area.x + c * next_cell_size, current_next_y + r * next_cell_size, next_cell_size - 1.0f, next_cell_size - 1.0f};
                             SDL_SetRenderDrawColor(app->renderer, def.color.r, def.color.g, def.color.b, def.color.a);
                             SDL_RenderFillRect(app->renderer, &rect);
                             if (r == info.crystal_r && c == info.crystal_c) {
                                 SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
                                 float c_margin = next_cell_size * 0.2f;
-                                SDL_FRect crect = {next_offset_x + c * next_cell_size + c_margin, current_next_y + r * next_cell_size + c_margin, next_cell_size - c_margin * 2.0f, next_cell_size - c_margin * 2.0f};
+                                SDL_FRect crect = {layout.next_area.x + c * next_cell_size + c_margin, current_next_y + r * next_cell_size + c_margin, next_cell_size - c_margin * 2.0f, next_cell_size - c_margin * 2.0f};
                                 SDL_RenderFillRect(app->renderer, &crect);
                             }
                         }
@@ -561,67 +570,54 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 }
             }
         }
-        
-        SDL_SetRenderDrawColor(app->renderer, 100, 100, 100, 255);
 
-        SDL_FRect left_btn = {left_col_x, left_btn_y, btn_size, btn_size};
-        SDL_FRect right_btn = {right_col_x, right_btn_y, btn_size, btn_size};
-        SDL_FRect rot_btn = {left_col_x, rot_btn_y, btn_size, btn_size};
-        SDL_FRect drop_btn = {right_col_x, drop_btn_y, btn_size, btn_size};
-        SDL_FRect pwr_btn = {right_col_x, pwr_btn_y, btn_size, btn_size};
-        
-        SDL_RenderFillRect(app->renderer, &left_btn);
-        SDL_RenderFillRect(app->renderer, &right_btn);
-        SDL_RenderFillRect(app->renderer, &rot_btn);
-        SDL_RenderFillRect(app->renderer, &drop_btn);
+        // Section 3 Buttons
         SDL_SetRenderDrawColor(app->renderer, 255, 0, 255, 255);
-        SDL_RenderFillRect(app->renderer, &pwr_btn);
+        SDL_RenderFillRect(app->renderer, &layout.pwr_btn);
+        SDL_SetRenderDrawColor(app->renderer, 100, 100, 100, 255);
+        SDL_RenderFillRect(app->renderer, &layout.drop_btn);
+        SDL_RenderFillRect(app->renderer, &layout.right_btn);
 
+        // Labels
         float label_scale = 2.0f * ui_scale * window_scale;
-        SDL_SetRenderScale(app->renderer, label_scale, label_scale);
         SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
         
-        auto draw_label = [&](float bx, float by, const char* text) {
-            float tx = (bx + btn_size * 0.35f) / label_scale;
-            float ty = (by + btn_size * 0.35f) / label_scale;
-            SDL_RenderDebugTextFormat(app->renderer, tx, ty, "%s", text);
+        auto draw_label = [&](const SDL_FRect& r, const char* text) {
+            RenderCenteredText(app->renderer, r.x + r.w * 0.5f, r.y + r.h * 0.5f, label_scale, "%s", text);
         };
 
-        draw_label(left_col_x, left_btn_y, "<");
-        draw_label(right_col_x, right_btn_y, ">");
-        draw_label(left_col_x, rot_btn_y, "R");
-        draw_label(right_col_x, drop_btn_y, "v");
-        char pwr_txt[2];
+        draw_label(layout.left_btn, "<");
+        draw_label(layout.right_btn, ">");
+        draw_label(layout.rot_btn, "R");
+        draw_label(layout.drop_btn, "v");
+        char pwr_txt[4];
         SDL_snprintf(pwr_txt, sizeof(pwr_txt), "%d", app->board1.stored_powerups);
-        draw_label(right_col_x, pwr_btn_y, pwr_txt);
-        SDL_SetRenderScale(app->renderer, 1.0f, 1.0f);
+        draw_label(layout.pwr_btn, pwr_txt);
 
         // Render status messages last, centered over the board area
         if (app->net_client) {
-            float overlay_scale = ui_text_scale * 1.5f;
-            SDL_SetRenderScale(app->renderer, overlay_scale, overlay_scale);
-            float board_center_x = (left_panel_w + center_panel_w * 0.5f) / overlay_scale;
-            float board_center_y = ((float)render_h * 0.4f) / overlay_scale;
+            float overlay_scale = layout.text_scale * 1.5f;
+            float board_center_x = (layout.section2.x + layout.section2.w * 0.5f);
+            float board_center_y = ((float)render_h * 0.4f);
 
             if (!app->net_client->is_connected()) {
                 SDL_SetRenderDrawColor(app->renderer, 255, 100, 100, 255);
-                SDL_RenderDebugTextFormat(app->renderer, board_center_x - 80.0f, board_center_y, "%s", "Waiting for server...");
+                RenderCenteredText(app->renderer, board_center_x, board_center_y, overlay_scale, "Waiting for server...");
             } else if (!app->net_client->is_opponent_ready()) {
                 SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
                 int cd = app->net_client->get_countdown();
-                if (cd > 0) SDL_RenderDebugTextFormat(app->renderer, board_center_x - 70.0f, board_center_y, "Match starts in: %d", cd);
-                else SDL_RenderDebugTextFormat(app->renderer, board_center_x - 80.0f, board_center_y, "%s", "Waiting for opponent...");
+                if (cd > 0) RenderCenteredText(app->renderer, board_center_x, board_center_y, overlay_scale, "Match starts in: %d", cd);
+                else RenderCenteredText(app->renderer, board_center_x, board_center_y, overlay_scale, "Waiting for opponent...");
             }
             
             if (app->net_client->has_weak_connection()) {
                 SDL_SetRenderDrawColor(app->renderer, 255, 165, 0, 255);
-                SDL_RenderDebugTextFormat(app->renderer, board_center_x - 70.0f, board_center_y + 25.0f, "%s", "Weak Connection!");
+                RenderCenteredText(app->renderer, board_center_x, board_center_y + 25.0f * overlay_scale, overlay_scale, "Weak Connection!");
             }
             if (SDL_GetTicks() < app->global_freeze_until) {
                 SDL_SetRenderDrawColor(app->renderer, 0, 255, 255, 255);
-                SDL_RenderDebugTextFormat(app->renderer, board_center_x - 90.0f, board_center_y + 50.0f, "%s", "POWER ACTIVE - FROZEN!");
+                RenderCenteredText(app->renderer, board_center_x, board_center_y + 50.0f * overlay_scale, overlay_scale, "POWER ACTIVE - FROZEN!");
             }
-            SDL_SetRenderScale(app->renderer, 1.0f, 1.0f);
         }
     }
 
