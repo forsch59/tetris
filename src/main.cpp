@@ -54,25 +54,25 @@ static UILayout CalculateLayout(int render_w, int render_h) {
     // Section 1: Bottom up relative to section
     float btn_h = (float)render_h * 0.08f; // Make buttons proportional to screen height
     layout.left_btn = { layout.section1.x, layout.section1.y + layout.section1.h - btn_h, item_w, btn_h };
-    layout.rot_btn = { layout.section1.x, layout.left_btn.y - layout.padding - btn_h, item_w, btn_h };
+    layout.drop_btn = { layout.section1.x, layout.left_btn.y - layout.padding - btn_h, item_w, btn_h };
+    layout.pwr_btn = { layout.section1.x, layout.drop_btn.y - layout.padding - btn_h, item_w, btn_h };
     
-    // Opponent Grid in Section 1
-    float timer_level_h = 40.0f * layout.text_scale;
-    float opp_y = layout.menu_btn.y + layout.menu_btn.h + layout.padding + timer_level_h + layout.padding;
-    float opp_h = layout.rot_btn.y - layout.padding - opp_y;
-    layout.opp_grid = { layout.section1.x, opp_y, item_w, opp_h };
-
     // Section 3: Bottom up relative to section
     float item_w3 = layout.section3.w;
     float s3_x = layout.section3.x;
     layout.right_btn = { s3_x, layout.section3.y + layout.section_padding + layout.section3.h - btn_h - layout.section_padding, item_w3, btn_h };
-    layout.drop_btn = { s3_x, layout.right_btn.y - layout.padding - btn_h, item_w3, btn_h };
-    layout.pwr_btn = { s3_x, layout.drop_btn.y - layout.padding - btn_h, item_w3, btn_h };
+    layout.rot_btn = { s3_x, layout.right_btn.y - layout.padding - btn_h, item_w3, btn_h };
     
     // Section 3: Next area top down
     float next_y = layout.section_padding;
-    float next_h = layout.pwr_btn.y - layout.padding - next_y;
+    float next_h = (float)render_h * 0.25f; 
     layout.next_area = { s3_x, next_y, item_w3, next_h };
+
+    // Opponent Grid in Section 3, under next_area
+    float timer_level_h = 40.0f * layout.text_scale;
+    float opp_y = layout.next_area.y + layout.next_area.h + layout.padding + timer_level_h;
+    float opp_h = layout.rot_btn.y - layout.padding - opp_y;
+    layout.opp_grid = { s3_x, opp_y, item_w3, opp_h };
 
     return layout;
 }
@@ -485,7 +485,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     SDL_FRect rect = {offset_x + x * cell_size, y_offset + y * cell_size, cell_size - 1.0f, cell_size - 1.0f};
                     int color_idx = board.grid[y][x].color;
                     if (color_idx != 0) {
-                        SDL_SetRenderDrawColor(app->renderer, 225, 215, 185, 255);
+                        const auto& c = TETROMINO_DEFS[color_idx].color;
+                        SDL_SetRenderDrawColor(app->renderer, c.r, c.g, c.b, c.a);
                         SDL_RenderFillRect(app->renderer, &rect);
                         if (board.grid[y][x].has_crystal) {
                             SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
@@ -501,6 +502,34 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             }
             if (board.current_piece.type > 0 && board.current_piece.type <= 7) {
                 const auto& c = TETROMINO_DEFS[board.current_piece.type].color;
+
+                // Ghost piece logic
+                int orig_y = board.current_piece.y;
+                int ghost_y = orig_y;
+                while (true) {
+                    board.current_piece.y++;
+                    if (board.check_collision()) {
+                        board.current_piece.y--;
+                        ghost_y = board.current_piece.y;
+                        break;
+                    }
+                }
+                board.current_piece.y = orig_y;
+
+                if (ghost_y > orig_y) {
+                    SDL_SetRenderDrawBlendMode(app->renderer, SDL_BLENDMODE_BLEND);
+                    for(int r=0; r<4; r++) {
+                        for(int c_idx=0; c_idx<4; c_idx++) {
+                            if(board.current_piece.shape[r][c_idx]) {
+                                SDL_FRect rect = {offset_x + (board.current_piece.x + c_idx) * cell_size, y_offset + (ghost_y + r) * cell_size, cell_size - 1.0f, cell_size - 1.0f};
+                                SDL_SetRenderDrawColor(app->renderer, c.r, c.g, c.b, 64);
+                                SDL_RenderFillRect(app->renderer, &rect);
+                            }
+                        }
+                    }
+                    SDL_SetRenderDrawBlendMode(app->renderer, SDL_BLENDMODE_NONE);
+                }
+
                 for(int r=0; r<4; r++) {
                     for(int c_idx=0; c_idx<4; c_idx++) {
                         if(board.current_piece.shape[r][c_idx]) {
@@ -530,18 +559,17 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         // Menu text in button
         RenderCenteredText(app->renderer, layout.menu_btn.x + layout.menu_btn.w * 0.5f, layout.menu_btn.y + layout.menu_btn.h * 0.5f, layout.text_scale, "MENU");
         
-        float center_x1 = layout.section1.x + layout.section1.w * 0.5f;
-        float stacked_y = layout.menu_btn.y + layout.menu_btn.h + layout.padding + 10.0f * layout.text_scale;
-
-        // Opponent grid
-        draw_board_rel(app->board2, layout.opp_grid, 0, 0);
-
         // Section 1 Buttons
+        SDL_SetRenderDrawColor(app->renderer, 255, 0, 255, 255); // Power color
+        SDL_RenderFillRect(app->renderer, &layout.pwr_btn);
         SDL_SetRenderDrawColor(app->renderer, 100, 100, 100, 255);
-        SDL_RenderFillRect(app->renderer, &layout.rot_btn);
+        SDL_RenderFillRect(app->renderer, &layout.drop_btn);
         SDL_RenderFillRect(app->renderer, &layout.left_btn);
 
         // SECTION 3 (Right) Rendering
+        // Opponent grid
+        draw_board_rel(app->board2, layout.opp_grid, 0, 0);
+
         // Next pieces
         if (app->board1.shared_queue && app->net_client) {
             int next_index = app->net_client->get_global_next_index();
@@ -572,10 +600,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         }
 
         // Section 3 Buttons
-        SDL_SetRenderDrawColor(app->renderer, 255, 0, 255, 255);
-        SDL_RenderFillRect(app->renderer, &layout.pwr_btn);
         SDL_SetRenderDrawColor(app->renderer, 100, 100, 100, 255);
-        SDL_RenderFillRect(app->renderer, &layout.drop_btn);
+        SDL_RenderFillRect(app->renderer, &layout.rot_btn);
         SDL_RenderFillRect(app->renderer, &layout.right_btn);
 
         // Labels

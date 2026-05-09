@@ -1,0 +1,17 @@
+348c02e HEAD@{0}: commit: 12
+93b58a5 HEAD@{1}: commit: 11
+0ba738c HEAD@{2}: commit: 10
+5d0e1fc HEAD@{3}: commit: 9
+3559ca4 HEAD@{4}: commit: 8
+bf306d8 HEAD@{5}: commit: 7
+3256379 HEAD@{6}: commit: 6
+4e0cafa HEAD@{7}: commit: 5
+bd24b0c HEAD@{8}: commit: 4
+e360d32 HEAD@{9}: commit: 3
+29f967c HEAD@{10}: commit: 2
+5217150 HEAD@{11}: commit: 1
+7773f1b HEAD@{12}: commit: working linux
+1841b50 HEAD@{13}: commit: 2 emulators working, networking is a mess
+34c1142 HEAD@{14}: commit: jgkhg
+12e7a9a HEAD@{15}: commit: emulator working
+5e6a763 HEAD@{16}: commit (initial): first
