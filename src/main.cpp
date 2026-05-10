@@ -39,9 +39,9 @@ static UILayout CalculateLayout(int render_w, int render_h) {
     float s1_w = (float)render_w * 0.15f;
     float s3_w = (float)render_w * 0.15f;
     
-    layout.section1 = { layout.section_padding, layout.section_padding, s1_w - layout.section_padding * 2.0f, (float)render_h - layout.section_padding * 2.0f };
-    layout.section2 = { s1_w, layout.section_padding, s2_w, (float)render_h - layout.section_padding * 2.0f };
-    layout.section3 = { s1_w + s2_w + layout.section_padding, layout.section_padding, s3_w - layout.section_padding * 2.0f, (float)render_h - layout.section_padding * 2.0f };
+    layout.section1 = { .x = layout.section_padding, .y = layout.section_padding, .w = s1_w - layout.section_padding * 2.0f, .h = (float)render_h - layout.section_padding * 2.0f };
+    layout.section2 = { .x = s1_w, .y = layout.section_padding, .w = s2_w, .h = (float)render_h - layout.section_padding * 2.0f };
+    layout.section3 = { .x = s1_w + s2_w + layout.section_padding, .y = layout.section_padding, .w = s3_w - layout.section_padding * 2.0f, .h = (float)render_h - layout.section_padding * 2.0f };
     
     layout.text_scale = (layout.section1.w / 100.0f);
     if (layout.text_scale < 0.4f) layout.text_scale = 0.4f;
@@ -49,30 +49,30 @@ static UILayout CalculateLayout(int render_w, int render_h) {
     float item_w = layout.section1.w;
     
     // Section 1: Top down relative to section
-    layout.menu_btn = { layout.section1.x, layout.section1.y, item_w, (float)render_h * 0.06f };
+    layout.menu_btn = { .x = layout.section1.x, .y = layout.section1.y, .w = item_w, .h = (float)render_h * 0.06f };
     
     // Section 1: Bottom up relative to section
     float btn_h = (float)render_h * 0.08f; // Make buttons proportional to screen height
-    layout.left_btn = { layout.section1.x, layout.section1.y + layout.section1.h - btn_h, item_w, btn_h };
-    layout.drop_btn = { layout.section1.x, layout.left_btn.y - layout.padding - btn_h, item_w, btn_h };
-    layout.pwr_btn = { layout.section1.x, layout.drop_btn.y - layout.padding - btn_h, item_w, btn_h };
+    layout.left_btn = { .x = layout.section1.x, .y = layout.section1.y + layout.section1.h - btn_h, .w = item_w, .h = btn_h };
+    layout.drop_btn = { .x = layout.section1.x, .y = layout.left_btn.y - layout.padding - btn_h, .w = item_w, .h = btn_h };
+    layout.pwr_btn = { .x = layout.section1.x, .y = layout.drop_btn.y - layout.padding - btn_h, .w = item_w, .h = btn_h };
     
     // Section 3: Bottom up relative to section
     float item_w3 = layout.section3.w;
     float s3_x = layout.section3.x;
-    layout.right_btn = { s3_x, layout.section3.y + layout.section_padding + layout.section3.h - btn_h - layout.section_padding, item_w3, btn_h };
-    layout.rot_btn = { s3_x, layout.right_btn.y - layout.padding - btn_h, item_w3, btn_h };
+    layout.right_btn = { .x = s3_x, .y = layout.section3.y + layout.section_padding + layout.section3.h - btn_h - layout.section_padding, .w = item_w3, .h = btn_h };
+    layout.rot_btn = { .x = s3_x, .y = layout.right_btn.y - layout.padding - btn_h, .w = item_w3, .h = btn_h };
     
     // Section 3: Next area top down
     float next_y = layout.section_padding;
     float next_h = (float)render_h * 0.25f; 
-    layout.next_area = { s3_x, next_y, item_w3, next_h };
+    layout.next_area = { .x = s3_x, .y = next_y, .w = item_w3, .h = next_h };
 
     // Opponent Grid in Section 3, under next_area
     float timer_level_h = 40.0f * layout.text_scale;
     float opp_y = layout.next_area.y + layout.next_area.h + layout.padding + timer_level_h;
     float opp_h = layout.rot_btn.y - layout.padding - opp_y;
-    layout.opp_grid = { s3_x, opp_y, item_w3, opp_h };
+    layout.opp_grid = { .x = s3_x, .y = opp_y, .w = item_w3, .h = opp_h };
 
     return layout;
 }
@@ -353,7 +353,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         RenderCenteredText(app->renderer.get(), render_w * 0.5f, render_h * 0.4f, menu_text_scale, "Press ENTER to Start");
 
         SDL_SetRenderDrawColor(app->renderer.get(), 200, 50, 50, 255);
-        SDL_FRect exit_btn = {render_w * 0.5f - 100.0f * ui_scale, render_h * 0.6f, 200.0f * ui_scale, 60.0f * ui_scale};
+        SDL_FRect exit_btn = {.x = render_w * 0.5f - 100.0f * ui_scale, .y = render_h * 0.6f, .w = 200.0f * ui_scale, .h = 60.0f * ui_scale};
         SDL_RenderFillRect(app->renderer.get(), &exit_btn);
         
         SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 255, 255);
@@ -482,7 +482,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 
             for (int y = 0; y < TetrisBoard::HEIGHT; ++y) {
                 for (int x = 0; x < TetrisBoard::WIDTH; ++x) {
-                    SDL_FRect rect = {offset_x + x * cell_size, y_offset + y * cell_size, cell_size - 1.0f, cell_size - 1.0f};
+                    SDL_FRect rect = {.x = offset_x + x * cell_size, .y = y_offset + y * cell_size, .w = cell_size - 1.0f, .h = cell_size - 1.0f};
                     int color_idx = board.grid[y][x].color;
                     if (color_idx != 0) {
                         // Locked blocks are beige
@@ -491,7 +491,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                         if (board.grid[y][x].has_crystal) {
                             SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 0, 255);
                             float c_margin = cell_size * 0.2f;
-                            SDL_FRect crect = {offset_x + x * cell_size + c_margin, y_offset + y * cell_size + c_margin, cell_size - c_margin * 2.0f, cell_size - c_margin * 2.0f};
+                            SDL_FRect crect = {.x = offset_x + x * cell_size + c_margin, .y = y_offset + y * cell_size + c_margin, .w = cell_size - c_margin * 2.0f, .h = cell_size - c_margin * 2.0f};
                             SDL_RenderFillRect(app->renderer.get(), &crect);
                         }
                     } else {
@@ -521,7 +521,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     for(int r=0; r<4; r++) {
                         for(int c_idx=0; c_idx<4; c_idx++) {
                             if(board.current_piece.shape[r][c_idx]) {
-                                SDL_FRect rect = {offset_x + (board.current_piece.x + c_idx) * cell_size, y_offset + (ghost_y + r) * cell_size, cell_size - 1.0f, cell_size - 1.0f};
+                                SDL_FRect rect = {.x = offset_x + (board.current_piece.x + c_idx) * cell_size, .y = y_offset + (ghost_y + r) * cell_size, .w = cell_size - 1.0f, .h = cell_size - 1.0f};
                                 // Ghost blocks are also beige but transparent
                                 SDL_SetRenderDrawColor(app->renderer.get(), 225, 215, 185, 64);
                                 SDL_RenderFillRect(app->renderer.get(), &rect);
@@ -534,13 +534,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 for(int r=0; r<4; r++) {
                     for(int c_idx=0; c_idx<4; c_idx++) {
                         if(board.current_piece.shape[r][c_idx]) {
-                            SDL_FRect rect = {offset_x + (board.current_piece.x + c_idx) * cell_size, y_offset + (board.current_piece.y + r) * cell_size, cell_size - 1.0f, cell_size - 1.0f};
+                            SDL_FRect rect = {.x = offset_x + (board.current_piece.x + c_idx) * cell_size, .y = y_offset + (board.current_piece.y + r) * cell_size, .w = cell_size - 1.0f, .h = cell_size - 1.0f};
                             SDL_SetRenderDrawColor(app->renderer.get(), c.r, c.g, c.b, c.a);
                             SDL_RenderFillRect(app->renderer.get(), &rect);
                             if (board.current_piece.has_crystal[r][c_idx]) {
                                 SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 0, 255);
                                 float c_margin = cell_size * 0.2f;
-                                SDL_FRect crect = {offset_x + (board.current_piece.x + c_idx) * cell_size + c_margin, y_offset + (board.current_piece.y + r) * cell_size + c_margin, cell_size - c_margin * 2.0f, cell_size - c_margin * 2.0f};
+                                SDL_FRect crect = {.x = offset_x + (board.current_piece.x + c_idx) * cell_size + c_margin, .y = y_offset + (board.current_piece.y + r) * cell_size + c_margin, .w = cell_size - c_margin * 2.0f, .h = cell_size - c_margin * 2.0f};
                                 SDL_RenderFillRect(app->renderer.get(), &crect);
                             }
                         }
@@ -585,13 +585,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 for(int r=0; r<4; r++) {
                     for(int c=0; c<4; c++) {
                         if(def.shape[r][c]) {
-                            SDL_FRect rect = {layout.next_area.x + c * next_cell_size, current_next_y + r * next_cell_size, next_cell_size - 1.0f, next_cell_size - 1.0f};
+                            SDL_FRect rect = {.x = layout.next_area.x + c * next_cell_size, .y = current_next_y + r * next_cell_size, .w = next_cell_size - 1.0f, .h = next_cell_size - 1.0f};
                             SDL_SetRenderDrawColor(app->renderer.get(), def.color.r, def.color.g, def.color.b, def.color.a);
                             SDL_RenderFillRect(app->renderer.get(), &rect);
                             if (r == info.crystal_r && c == info.crystal_c) {
                                 SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 0, 255);
                                 float c_margin = next_cell_size * 0.2f;
-                                SDL_FRect crect = {layout.next_area.x + c * next_cell_size + c_margin, current_next_y + r * next_cell_size + c_margin, next_cell_size - c_margin * 2.0f, next_cell_size - c_margin * 2.0f};
+                                SDL_FRect crect = {.x = layout.next_area.x + c * next_cell_size + c_margin, .y = current_next_y + r * next_cell_size + c_margin, .w = next_cell_size - c_margin * 2.0f, .h = next_cell_size - c_margin * 2.0f};
                                 SDL_RenderFillRect(app->renderer.get(), &crect);
                             }
                         }

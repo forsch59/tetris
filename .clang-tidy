@@ -16,6 +16,10 @@ Checks: >
   -readability-else-after-return,
   -readability-function-cognitive-complexity,
   -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-pro-type-cstyle-cast,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-macro-usage,
 
 WarningsAsErrors: ''
 HeaderFilterRegex: '^.*/src/.*$'

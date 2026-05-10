@@ -10,7 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Enable clang-tidy with warnings as errors
 # set(CMAKE_CXX_CLANG_TIDY "clang-tidy;--warnings-as-errors=*")
-set(CMAKE_CXX_CLANG_TIDY "clang-tidy;--use-color")
+set(CMAKE_CXX_CLANG_TIDY "clang-tidy;--use-color;--extra-arg=-fcolor-diagnostics")
 
 # Add SDL3
 add_subdirectory(external/SDL)
