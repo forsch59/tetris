@@ -136,6 +136,15 @@ public:
         waiting_for_spawn = true;
     }
 
+    void discard_current_piece() {
+        if (!board_active || game_over)
+            return;
+        is_locking = false;
+        current_lock_delay = 500;
+        current_piece.type = 0;
+        request_spawn();
+    }
+
     void pack_grid(uint8_t* out) {
         std::memset(out, 0, 100);
         for (int y = 0; y < HEIGHT; ++y) {
@@ -262,6 +271,7 @@ public:
     }
 
     void spawn_piece(int index) {
+        SDL_Log("[BOARD] Spawning piece index %d (type %d)", index, shared_queue->get_piece_at(index).type);
         current_piece_index = index;
         PieceInfo info = shared_queue->get_piece_at(index);
         current_piece = {info.type + 1, 0, WIDTH / 2 - 2, 0};
@@ -379,14 +389,13 @@ public:
                 }
             }
         } else if (effect_type == 2) { // ADD_ROW
-            std::uniform_int_distribution<int> hole_dist(0, WIDTH - 1);
             for (int i = 0; i < param; ++i) {
                 // Shift up
                 for (int y = 0; y < HEIGHT - 1; ++y) {
                     grid[y] = grid[y + 1];
                 }
                 // Add garbage row at bottom
-                int hole_x = hole_dist(shared_queue->rng);
+                int hole_x = std::rand() % WIDTH;
                 for (int x = 0; x < WIDTH; ++x) {
                     grid[HEIGHT - 1][x].color = (x == hole_x) ? 0 : 7;
                     grid[HEIGHT - 1][x].has_crystal = false;

@@ -179,6 +179,10 @@ void GameController::Update(AppContext& app) {
                         bool target_me = (d.target == 0 && is_activator) || (d.target == 1 && !is_activator);
                         if (target_me)
                             app.board1.apply_power_effect(d.effect_type, d.effect_param);
+
+                        if (!is_activator) {
+                            app.board1.discard_current_piece();
+                        }
                         break;
                     }
                 }
@@ -218,6 +222,7 @@ void GameController::Update(AppContext& app) {
                 if (app.board1.spawn_request_pending) {
                     int granted_index = app.net_client->get_claimed_index();
                     if (granted_index != -1) {
+                        SDL_Log("[APP] Spawn request fulfilled with index %d", granted_index);
                         app.board1.spawn_piece(granted_index);
                         app.board1.waiting_for_spawn = false;
                         app.board1.spawn_request_pending = false;

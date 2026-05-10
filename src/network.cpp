@@ -110,7 +110,7 @@ void NetworkClient::handle_packet(const uint8_t* data, int len) {
             if (len >= (int)sizeof(CommandPacket)) {
                 const CommandPacket* p = (const CommandPacket*)data;
                 granted_index = p->data;
-                SDL_Log("[NET %d] Granted Piece Index: %d", CLIENT_ID, granted_index);
+                SDL_Log("[NET %d RECV] S_GRANT_PIECE: index=%d", CLIENT_ID, granted_index);
             }
             break;
         }
@@ -118,6 +118,7 @@ void NetworkClient::handle_packet(const uint8_t* data, int len) {
             if (len >= (int)sizeof(CommandPacket)) {
                 const CommandPacket* p = (const CommandPacket*)data;
                 global_next_index = p->data;
+                SDL_Log("[NET %d RECV] S_NEXT_PIECE_UPDATE: next_global=%d", CLIENT_ID, global_next_index);
             }
             break;
         }
@@ -190,6 +191,7 @@ bool NetworkClient::send_packet(const void* data, size_t len) {
 }
 
 void NetworkClient::queue_lock_action() {
+    SDL_Log("[NET %d] Sending C_LOCK_PIECE (requesting new piece)", CLIENT_ID);
     if (!connected) return;
     CommandPacket p;
     p.header.type = PacketType::C_LOCK_PIECE;
