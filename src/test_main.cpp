@@ -89,14 +89,12 @@ TEST_CASE(test_collision_detection)
 TEST_END
 
 TEST_CASE(test_deterministic_rng)
-    SharedPieceQueue q1(nullptr);
-    SharedPieceQueue q2(nullptr);
-    
+    SharedPieceQueue q1;
+    SharedPieceQueue q2;
+
     uint32_t seed = 12345;
-    q1.rng.seed(seed);
-    q1.seed_initialized = true;
-    q2.rng.seed(seed);
-    q2.seed_initialized = true;
+    q1.init_seed(seed);
+    q2.init_seed(seed);
     
     for (int i = 0; i < 100; ++i) {
         auto p1 = q1.get_piece_at(i);

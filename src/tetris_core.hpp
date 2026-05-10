@@ -1,7 +1,6 @@
 #pragma once
 
-#include "network.hpp"
-
+#include <SDL3/SDL.h>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -44,20 +43,20 @@ public:
     std::uniform_int_distribution<int> piece_dist;
     std::uniform_int_distribution<int> crystal_dist;
     std::vector<PieceInfo> sequence;
-    std::shared_ptr<NetworkClient> net;
     bool seed_initialized = false;
 
-    SharedPieceQueue(std::shared_ptr<NetworkClient> n) : piece_dist(0, 6), crystal_dist(0, 4), net(n) {}
+    SharedPieceQueue() : piece_dist(0, 6), crystal_dist(0, 4) {}
 
-    void ensure_seed() {
-        if (!seed_initialized && net && net->is_seed_ready()) {
-            rng.seed(net->get_seed());
+    void init_seed(uint32_t seed) {
+        if (!seed_initialized) {
+            rng.seed(seed);
             seed_initialized = true;
         }
     }
 
     PieceInfo get_piece_at(int index) {
-        ensure_seed();
+        if (!seed_initialized)
+            return {0, -1, -1};
         while (index >= (int)sequence.size()) {
             int t = piece_dist(rng);
             int cry_r = -1, cry_c = -1;
@@ -110,6 +109,7 @@ public:
     bool waiting_for_spawn = true;
     bool board_active = true;
     bool spawn_request_pending = false;
+    int pending_outgoing_garbage = 0;
 
     bool is_locking = false;
     uint64_t lock_timer_start = 0;
@@ -130,12 +130,10 @@ public:
     }
 
     void request_spawn() {
-        if (!shared_queue || !shared_queue->net || spawn_request_pending)
+        if (!shared_queue || spawn_request_pending)
             return;
         spawn_request_pending = true;
         waiting_for_spawn = true;
-        shared_queue->net->queue_lock_action();
-        SDL_Log("[GAME] Requesting new piece from server...");
     }
 
     void pack_grid(uint8_t* out) {
@@ -191,58 +189,6 @@ public:
         }
     }
 
-    void process_network() {
-        if (!shared_queue || !shared_queue->net)
-            return;
-
-        int pending_garbage = shared_queue->net->get_pending_garbage();
-        if (pending_garbage > 0) {
-            apply_power_effect(2, pending_garbage);
-        }
-
-        if (shared_queue->net->is_game_over()) {
-            game_over = true;
-        }
-
-        if (!board_active) {
-            const auto& opp = shared_queue->net->get_opponent_state();
-            current_piece.type = opp.piece_type;
-            current_piece.rotation = opp.piece_rot;
-            current_piece.x = opp.piece_x;
-            current_piece.y = opp.piece_y;
-            set_crystal_mask(opp.piece_crystal_mask);
-            update_shape_only();
-            unpack_grid(opp.grid);
-            return;
-        }
-
-        if (!shared_queue->net->is_opponent_ready())
-            return;
-
-        if (waiting_for_spawn && !spawn_request_pending) {
-            request_spawn();
-        }
-
-        if (spawn_request_pending) {
-            int granted_index = shared_queue->net->get_claimed_index();
-            if (granted_index != -1) {
-                spawn_piece(granted_index);
-                waiting_for_spawn = false;
-                spawn_request_pending = false;
-            }
-        }
-
-        static uint32_t last_sync = 0;
-        uint32_t now = SDL_GetTicks();
-        if (now - last_sync > 50) { // 20Hz update rate
-            uint8_t packed[100];
-            pack_grid(packed);
-            shared_queue->net->send_state(current_piece.type, current_piece.rotation, current_piece.x, current_piece.y, get_crystal_mask(),
-                                          packed);
-            last_sync = now;
-        }
-    }
-
     void update_shape_only() {
         if (current_piece.type <= 0 || current_piece.type > 7) {
             for (auto& row : current_piece.shape)
@@ -278,7 +224,7 @@ public:
         int N = def.size;
 
         PieceInfo info = {current_piece.type - 1, -1, -1};
-        if (shared_queue) {
+        if (shared_queue && current_piece_index != -1) {
             info = shared_queue->get_piece_at(current_piece_index);
         }
 
@@ -327,14 +273,11 @@ public:
 
         if (check_collision()) {
             game_over = true;
-            if (board_active) {
-                shared_queue->net->send_game_over();
-            }
         }
     }
 
     void update() {
-        if (game_over || waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready())
+        if (game_over || waiting_for_spawn || !shared_queue)
             return;
         current_piece.y++;
         if (check_collision()) {
@@ -366,7 +309,7 @@ public:
     }
 
     void move(int dx) {
-        if (waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready())
+        if (waiting_for_spawn || !shared_queue)
             return;
         current_piece.x += dx;
         if (check_collision()) {
@@ -377,7 +320,7 @@ public:
     }
 
     void rotate() {
-        if (waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready())
+        if (waiting_for_spawn || !shared_queue)
             return;
         int old_rot = current_piece.rotation;
         current_piece.rotation = (current_piece.rotation + 1) % 4;
@@ -410,7 +353,7 @@ public:
     }
 
     void hard_drop() {
-        if (game_over || waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready())
+        if (game_over || waiting_for_spawn || !shared_queue)
             return;
         while (!check_collision()) {
             current_piece.y++;
@@ -520,7 +463,7 @@ public:
             }
         }
 
-        if (lines_cleared >= 2 && board_active && shared_queue && shared_queue->net) {
+        if (lines_cleared >= 2 && board_active && shared_queue) {
             int garbage_sent = 0;
             if (lines_cleared == 2)
                 garbage_sent = 1;
@@ -530,7 +473,7 @@ public:
                 garbage_sent = 4;
 
             if (garbage_sent > 0) {
-                shared_queue->net->send_garbage(garbage_sent);
+                pending_outgoing_garbage += garbage_sent;
             }
         }
     }
