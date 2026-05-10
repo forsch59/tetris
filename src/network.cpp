@@ -1,5 +1,6 @@
 #include "network.hpp"
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <cstring>
 
 #ifndef CLIENT_ID
@@ -11,29 +12,27 @@ NetworkClient::NetworkClient() {
 }
 
 NetworkClient::~NetworkClient() {
-    if (sock) NET_DestroyStreamSocket(sock);
-    if (addr) NET_UnrefAddress(addr);
     NET_Quit();
 }
 
 bool NetworkClient::connect(const char* host, uint16_t port) {
     SDL_Log("[NET %d] Resolving %s...", CLIENT_ID, host);
-    addr = NET_ResolveHostname(host);
+    addr.reset(NET_ResolveHostname(host));
     if (!addr) return false;
     
-    if (NET_WaitUntilResolved(addr, 5000) != NET_SUCCESS) {
+    if (NET_WaitUntilResolved(addr.get(), 5000) != NET_SUCCESS) {
         SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] Host resolution failed", CLIENT_ID);
         return false;
     }
 
     SDL_Log("[NET %d] Connecting to %s:%d...", CLIENT_ID, host, port);
-    sock = NET_CreateClient(addr, port);
+    sock.reset(NET_CreateClient(addr.get(), port));
     if (!sock) {
         SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] Socket creation failed: %s", CLIENT_ID, SDL_GetError());
         return false;
     }
 
-    if (NET_WaitUntilConnected(sock, 5000) == NET_SUCCESS) {
+    if (NET_WaitUntilConnected(sock.get(), 5000) == NET_SUCCESS) {
         connected = true;
         SDL_Log("[NET %d] CONNECTED to server", CLIENT_ID);
         return true;
@@ -49,13 +48,13 @@ void NetworkClient::update() {
     int bytes_read;
     
     // SDL_net 3 stream sockets are reliable.
-    while (connected && (bytes_read = NET_ReadFromStreamSocket(sock, buffer, sizeof(buffer))) > 0) {
+    while (connected && (bytes_read = NET_ReadFromStreamSocket(sock.get(), buffer, sizeof(buffer))) > 0) {
         if (recv_buf_len + bytes_read > (int)sizeof(recv_buf)) {
             SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "Receive buffer overflow!");
             connected = false;
             return;
         }
-        std::memcpy(recv_buf + recv_buf_len, buffer, bytes_read);
+        std::copy_n(buffer, bytes_read, recv_buf + recv_buf_len);
         recv_buf_len += bytes_read;
 
         while (recv_buf_len >= 2) {
@@ -185,8 +184,8 @@ bool NetworkClient::send_packet(const void* data, size_t len) {
         SDL_Log("[NET %d SEND] Type: %d, Len: %d", CLIENT_ID, (int)header->type, (int)len);
     }
     uint16_t pkt_len = SDL_Swap16LE((uint16_t)len);
-    if (!NET_WriteToStreamSocket(sock, &pkt_len, 2)) return false;
-    if (!NET_WriteToStreamSocket(sock, data, len)) return false;
+    if (!NET_WriteToStreamSocket(sock.get(), &pkt_len, 2)) return false;
+    if (!NET_WriteToStreamSocket(sock.get(), data, len)) return false;
     return true;
 }
 
@@ -243,7 +242,7 @@ void NetworkClient::send_state(int8_t type, int8_t rot, int8_t x, int8_t y, uint
     p.piece_x = x;
     p.piece_y = y;
     p.piece_crystal_mask = crystal_mask;
-    std::memcpy(p.grid, grid_data, 100);
+    std::copy_n(grid_data, 100, p.grid);
     if (!send_packet(&p, sizeof(p))) {
         connected = false;
         SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET] Disconnected from server (write failure)");

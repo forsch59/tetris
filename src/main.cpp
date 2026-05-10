@@ -82,8 +82,8 @@ struct AppContext {
     std::shared_ptr<SharedPieceQueue> shared_queue;
     TetrisBoard board1;
     TetrisBoard board2;
-    SDL_Window* window;
-    SDL_Renderer* renderer;
+    std::unique_ptr<SDL_Window, void(*)(SDL_Window*)> window{nullptr, SDL_DestroyWindow};
+    std::unique_ptr<SDL_Renderer, void(*)(SDL_Renderer*)> renderer{nullptr, SDL_DestroyRenderer};
     SDL_AppResult app_quit = SDL_APP_CONTINUE;
     GameState state = GameState::MENU;
     bool skip_menu = true; // Flag for testing
@@ -123,9 +123,6 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         return SDL_Fail();
     }
 
-    SDL_Window* window = nullptr;
-    SDL_Renderer* renderer = nullptr;
-
     char window_title[32];
     SDL_snprintf(window_title, sizeof(window_title), "Tetris Client %d", CLIENT_ID);
     
@@ -141,20 +138,23 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     window_h = 800;
 #endif
 
-    if (!SDL_CreateWindowAndRenderer(window_title, window_w, window_h, window_flags, &window, &renderer)) {
+    SDL_Window* raw_window = nullptr;
+    SDL_Renderer* raw_renderer = nullptr;
+    if (!SDL_CreateWindowAndRenderer(window_title, window_w, window_h, window_flags, &raw_window, &raw_renderer)) {
         return SDL_Fail();
     }
 
-    *appstate = new AppContext{
-        .window = window,
-        .renderer = renderer,
-    };
+    auto app = std::make_unique<AppContext>();
+    app->window.reset(raw_window);
+    app->renderer.reset(raw_renderer);
+
+    *appstate = app.release();
 
     return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
-    auto* app = (AppContext*)appstate;
+    auto* app = static_cast<AppContext*>(appstate);
 
     if (event->type == SDL_EVENT_QUIT) {
         app->app_quit = SDL_APP_SUCCESS;
@@ -224,13 +224,13 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         }
 
         float x, y;
-        float ui_scale = SDL_GetWindowDisplayScale(app->window);
+        float ui_scale = SDL_GetWindowDisplayScale(app->window.get());
         if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             x = event->button.x * ui_scale;
             y = event->button.y * ui_scale;
         } else {
             int w, h;
-            SDL_GetRenderOutputSize(app->renderer, &w, &h);
+            SDL_GetRenderOutputSize(app->renderer.get(), &w, &h);
             x = event->tfinger.x * w;
             y = event->tfinger.y * h;
         }
@@ -241,7 +241,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
             }
         } else if (app->state == GameState::PLAYING) {
             int render_w, render_h;
-            SDL_GetRenderOutputSize(app->renderer, &render_w, &render_h);
+            SDL_GetRenderOutputSize(app->renderer.get(), &render_w, &render_h);
             UILayout layout = CalculateLayout(render_w, render_h);
 
             auto in_rect = [&](const SDL_FRect& r) {
@@ -296,10 +296,10 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 }
 
 SDL_AppResult SDL_AppIterate(void* appstate) {
-    auto* app = (AppContext*)appstate;
-    SDL_SetRenderDrawColor(app->renderer, 40, 40, 45, 255); 
-    SDL_RenderClear(app->renderer);
-    SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
+    auto* app = static_cast<AppContext*>(appstate);
+    SDL_SetRenderDrawColor(app->renderer.get(), 40, 40, 45, 255); 
+    SDL_RenderClear(app->renderer.get());
+    SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 255, 255);
     
     if (app->skip_menu && app->state == GameState::MENU) {
         app->state = GameState::PLAYING;
@@ -316,9 +316,9 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         app->board2.set_shared_queue(app->shared_queue, false);
     }
 
-    float ui_scale = SDL_GetWindowDisplayScale(app->window);
+    float ui_scale = SDL_GetWindowDisplayScale(app->window.get());
     int render_w, render_h;
-    SDL_GetRenderOutputSize(app->renderer, &render_w, &render_h);
+    SDL_GetRenderOutputSize(app->renderer.get(), &render_w, &render_h);
 
     // Screen-relative layout dimensions
     // Use a more compact layout to reduce horizontal gaps
@@ -344,36 +344,36 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     if (app->state == GameState::MENU) {
         float menu_text_scale = 2.0f * ui_scale;
 #if CLIENT_ID == 1
-        RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.3f, menu_text_scale, "CLIENT 1 - TETRIS BATTLE");
+        RenderCenteredText(app->renderer.get(), render_w * 0.5f, render_h * 0.3f, menu_text_scale, "CLIENT 1 - TETRIS BATTLE");
 #elif CLIENT_ID == 2
-        RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.3f, menu_text_scale, "CLIENT 2 - TETRIS BATTLE");
+        RenderCenteredText(app->renderer.get(), render_w * 0.5f, render_h * 0.3f, menu_text_scale, "CLIENT 2 - TETRIS BATTLE");
 #else
-        RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.3f, menu_text_scale, "TETRIS BATTLE");
+        RenderCenteredText(app->renderer.get(), render_w * 0.5f, render_h * 0.3f, menu_text_scale, "TETRIS BATTLE");
 #endif
-        RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.4f, menu_text_scale, "Press ENTER to Start");
+        RenderCenteredText(app->renderer.get(), render_w * 0.5f, render_h * 0.4f, menu_text_scale, "Press ENTER to Start");
 
-        SDL_SetRenderDrawColor(app->renderer, 200, 50, 50, 255);
+        SDL_SetRenderDrawColor(app->renderer.get(), 200, 50, 50, 255);
         SDL_FRect exit_btn = {render_w * 0.5f - 100.0f * ui_scale, render_h * 0.6f, 200.0f * ui_scale, 60.0f * ui_scale};
-        SDL_RenderFillRect(app->renderer, &exit_btn);
+        SDL_RenderFillRect(app->renderer.get(), &exit_btn);
         
-        SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
-        RenderCenteredText(app->renderer, exit_btn.x + exit_btn.w * 0.5f, exit_btn.y + exit_btn.h * 0.5f, menu_text_scale, "EXIT");
+        SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 255, 255);
+        RenderCenteredText(app->renderer.get(), exit_btn.x + exit_btn.w * 0.5f, exit_btn.y + exit_btn.h * 0.5f, menu_text_scale, "EXIT");
 
     } else if (app->state == GameState::GAME_OVER) {
         float go_text_scale = 2.0f * ui_scale;
         if (app->net_client && app->net_client->is_game_over()) {
             if (app->net_client->am_i_winner()) {
-                SDL_SetRenderDrawColor(app->renderer, 0, 255, 0, 255);
-                RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.4f, go_text_scale, "YOU WIN!");
+                SDL_SetRenderDrawColor(app->renderer.get(), 0, 255, 0, 255);
+                RenderCenteredText(app->renderer.get(), render_w * 0.5f, render_h * 0.4f, go_text_scale, "YOU WIN!");
             } else {
-                SDL_SetRenderDrawColor(app->renderer, 255, 50, 50, 255);
-                RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.4f, go_text_scale, "YOU LOSE!");
+                SDL_SetRenderDrawColor(app->renderer.get(), 255, 50, 50, 255);
+                RenderCenteredText(app->renderer.get(), render_w * 0.5f, render_h * 0.4f, go_text_scale, "YOU LOSE!");
             }
         } else {
-            RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.4f, go_text_scale, "GAME OVER!");
+            RenderCenteredText(app->renderer.get(), render_w * 0.5f, render_h * 0.4f, go_text_scale, "GAME OVER!");
         }
-        SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
-        RenderCenteredText(app->renderer, render_w * 0.5f, render_h * 0.5f, go_text_scale, "Press ENTER to Restart");
+        SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 255, 255);
+        RenderCenteredText(app->renderer.get(), render_w * 0.5f, render_h * 0.5f, go_text_scale, "Press ENTER to Restart");
     } else if (app->state == GameState::PLAYING) {
         Uint64 current_time = SDL_GetTicks();
         UILayout layout = CalculateLayout(render_w, render_h);
@@ -447,12 +447,12 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     if (app->board1.game_over || app->board2.game_over) app->state = GameState::GAME_OVER;
 
     // Render section backgrounds
-    SDL_SetRenderDrawColor(app->renderer, 30, 30, 35, 255); // Darker left
-    SDL_RenderFillRect(app->renderer, &layout.section1);
-    SDL_SetRenderDrawColor(app->renderer, 45, 45, 50, 255); // Lighter center
-    SDL_RenderFillRect(app->renderer, &layout.section2);
-    SDL_SetRenderDrawColor(app->renderer, 30, 30, 35, 255); // Darker right
-    SDL_RenderFillRect(app->renderer, &layout.section3);
+    SDL_SetRenderDrawColor(app->renderer.get(), 30, 30, 35, 255); // Darker left
+    SDL_RenderFillRect(app->renderer.get(), &layout.section1);
+    SDL_SetRenderDrawColor(app->renderer.get(), 45, 45, 50, 255); // Lighter center
+    SDL_RenderFillRect(app->renderer.get(), &layout.section2);
+    SDL_SetRenderDrawColor(app->renderer.get(), 30, 30, 35, 255); // Darker right
+    SDL_RenderFillRect(app->renderer.get(), &layout.section3);
 
     // Status info will be rendered last, centered over the board area
 
@@ -486,17 +486,17 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     int color_idx = board.grid[y][x].color;
                     if (color_idx != 0) {
                         // Locked blocks are beige
-                        SDL_SetRenderDrawColor(app->renderer, 225, 215, 185, 255);
-                        SDL_RenderFillRect(app->renderer, &rect);
+                        SDL_SetRenderDrawColor(app->renderer.get(), 225, 215, 185, 255);
+                        SDL_RenderFillRect(app->renderer.get(), &rect);
                         if (board.grid[y][x].has_crystal) {
-                            SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
+                            SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 0, 255);
                             float c_margin = cell_size * 0.2f;
                             SDL_FRect crect = {offset_x + x * cell_size + c_margin, y_offset + y * cell_size + c_margin, cell_size - c_margin * 2.0f, cell_size - c_margin * 2.0f};
-                            SDL_RenderFillRect(app->renderer, &crect);
+                            SDL_RenderFillRect(app->renderer.get(), &crect);
                         }
                     } else {
-                        SDL_SetRenderDrawColor(app->renderer, 80, 80, 80, 255);
-                        SDL_RenderFillRect(app->renderer, &rect);
+                        SDL_SetRenderDrawColor(app->renderer.get(), 80, 80, 80, 255);
+                        SDL_RenderFillRect(app->renderer.get(), &rect);
                     }
                 }
             }
@@ -517,31 +517,31 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                 board.current_piece.y = orig_y;
 
                 if (ghost_y > orig_y) {
-                    SDL_SetRenderDrawBlendMode(app->renderer, SDL_BLENDMODE_BLEND);
+                    SDL_SetRenderDrawBlendMode(app->renderer.get(), SDL_BLENDMODE_BLEND);
                     for(int r=0; r<4; r++) {
                         for(int c_idx=0; c_idx<4; c_idx++) {
                             if(board.current_piece.shape[r][c_idx]) {
                                 SDL_FRect rect = {offset_x + (board.current_piece.x + c_idx) * cell_size, y_offset + (ghost_y + r) * cell_size, cell_size - 1.0f, cell_size - 1.0f};
                                 // Ghost blocks are also beige but transparent
-                                SDL_SetRenderDrawColor(app->renderer, 225, 215, 185, 64);
-                                SDL_RenderFillRect(app->renderer, &rect);
+                                SDL_SetRenderDrawColor(app->renderer.get(), 225, 215, 185, 64);
+                                SDL_RenderFillRect(app->renderer.get(), &rect);
                             }
                         }
                     }
-                    SDL_SetRenderDrawBlendMode(app->renderer, SDL_BLENDMODE_NONE);
+                    SDL_SetRenderDrawBlendMode(app->renderer.get(), SDL_BLENDMODE_NONE);
                 }
 
                 for(int r=0; r<4; r++) {
                     for(int c_idx=0; c_idx<4; c_idx++) {
                         if(board.current_piece.shape[r][c_idx]) {
                             SDL_FRect rect = {offset_x + (board.current_piece.x + c_idx) * cell_size, y_offset + (board.current_piece.y + r) * cell_size, cell_size - 1.0f, cell_size - 1.0f};
-                            SDL_SetRenderDrawColor(app->renderer, c.r, c.g, c.b, c.a);
-                            SDL_RenderFillRect(app->renderer, &rect);
+                            SDL_SetRenderDrawColor(app->renderer.get(), c.r, c.g, c.b, c.a);
+                            SDL_RenderFillRect(app->renderer.get(), &rect);
                             if (board.current_piece.has_crystal[r][c_idx]) {
-                                SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
+                                SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 0, 255);
                                 float c_margin = cell_size * 0.2f;
                                 SDL_FRect crect = {offset_x + (board.current_piece.x + c_idx) * cell_size + c_margin, y_offset + (board.current_piece.y + r) * cell_size + c_margin, cell_size - c_margin * 2.0f, cell_size - c_margin * 2.0f};
-                                SDL_RenderFillRect(app->renderer, &crect);
+                                SDL_RenderFillRect(app->renderer.get(), &crect);
                             }
                         }
                     }
@@ -552,20 +552,20 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         draw_board_rel(app->board1, layout.section2, 0, 0);
 
         // SECTION 1 (Left) Rendering
-        SDL_SetRenderDrawColor(app->renderer, 200, 50, 50, 255);
-        SDL_RenderFillRect(app->renderer, &layout.menu_btn);
+        SDL_SetRenderDrawColor(app->renderer.get(), 200, 50, 50, 255);
+        SDL_RenderFillRect(app->renderer.get(), &layout.menu_btn);
         
-        SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
+        SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 255, 255);
         
         // Menu text in button
-        RenderCenteredText(app->renderer, layout.menu_btn.x + layout.menu_btn.w * 0.5f, layout.menu_btn.y + layout.menu_btn.h * 0.5f, layout.text_scale, "MENU");
+        RenderCenteredText(app->renderer.get(), layout.menu_btn.x + layout.menu_btn.w * 0.5f, layout.menu_btn.y + layout.menu_btn.h * 0.5f, layout.text_scale, "MENU");
         
         // Section 1 Buttons
-        SDL_SetRenderDrawColor(app->renderer, 255, 0, 255, 255); // Power color
-        SDL_RenderFillRect(app->renderer, &layout.pwr_btn);
-        SDL_SetRenderDrawColor(app->renderer, 100, 100, 100, 255);
-        SDL_RenderFillRect(app->renderer, &layout.drop_btn);
-        SDL_RenderFillRect(app->renderer, &layout.left_btn);
+        SDL_SetRenderDrawColor(app->renderer.get(), 255, 0, 255, 255); // Power color
+        SDL_RenderFillRect(app->renderer.get(), &layout.pwr_btn);
+        SDL_SetRenderDrawColor(app->renderer.get(), 100, 100, 100, 255);
+        SDL_RenderFillRect(app->renderer.get(), &layout.drop_btn);
+        SDL_RenderFillRect(app->renderer.get(), &layout.left_btn);
 
         // SECTION 3 (Right) Rendering
         // Opponent grid
@@ -586,13 +586,13 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
                     for(int c=0; c<4; c++) {
                         if(def.shape[r][c]) {
                             SDL_FRect rect = {layout.next_area.x + c * next_cell_size, current_next_y + r * next_cell_size, next_cell_size - 1.0f, next_cell_size - 1.0f};
-                            SDL_SetRenderDrawColor(app->renderer, def.color.r, def.color.g, def.color.b, def.color.a);
-                            SDL_RenderFillRect(app->renderer, &rect);
+                            SDL_SetRenderDrawColor(app->renderer.get(), def.color.r, def.color.g, def.color.b, def.color.a);
+                            SDL_RenderFillRect(app->renderer.get(), &rect);
                             if (r == info.crystal_r && c == info.crystal_c) {
-                                SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
+                                SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 0, 255);
                                 float c_margin = next_cell_size * 0.2f;
                                 SDL_FRect crect = {layout.next_area.x + c * next_cell_size + c_margin, current_next_y + r * next_cell_size + c_margin, next_cell_size - c_margin * 2.0f, next_cell_size - c_margin * 2.0f};
-                                SDL_RenderFillRect(app->renderer, &crect);
+                                SDL_RenderFillRect(app->renderer.get(), &crect);
                             }
                         }
                     }
@@ -601,16 +601,16 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         }
 
         // Section 3 Buttons
-        SDL_SetRenderDrawColor(app->renderer, 100, 100, 100, 255);
-        SDL_RenderFillRect(app->renderer, &layout.rot_btn);
-        SDL_RenderFillRect(app->renderer, &layout.right_btn);
+        SDL_SetRenderDrawColor(app->renderer.get(), 100, 100, 100, 255);
+        SDL_RenderFillRect(app->renderer.get(), &layout.rot_btn);
+        SDL_RenderFillRect(app->renderer.get(), &layout.right_btn);
 
         // Labels
         float label_scale = 2.0f * ui_scale * window_scale;
-        SDL_SetRenderDrawColor(app->renderer, 255, 255, 255, 255);
+        SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 255, 255);
         
         auto draw_label = [&](const SDL_FRect& r, const char* text) {
-            RenderCenteredText(app->renderer, r.x + r.w * 0.5f, r.y + r.h * 0.5f, label_scale, "%s", text);
+            RenderCenteredText(app->renderer.get(), r.x + r.w * 0.5f, r.y + r.h * 0.5f, label_scale, "%s", text);
         };
 
         draw_label(layout.left_btn, "<");
@@ -628,36 +628,32 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
             float board_center_y = ((float)render_h * 0.4f);
 
             if (!app->net_client->is_connected()) {
-                SDL_SetRenderDrawColor(app->renderer, 255, 100, 100, 255);
-                RenderCenteredText(app->renderer, board_center_x, board_center_y, overlay_scale, "Waiting for server...");
+                SDL_SetRenderDrawColor(app->renderer.get(), 255, 100, 100, 255);
+                RenderCenteredText(app->renderer.get(), board_center_x, board_center_y, overlay_scale, "Waiting for server...");
             } else if (!app->net_client->is_opponent_ready()) {
-                SDL_SetRenderDrawColor(app->renderer, 255, 255, 0, 255);
+                SDL_SetRenderDrawColor(app->renderer.get(), 255, 255, 0, 255);
                 int cd = app->net_client->get_countdown();
-                if (cd > 0) RenderCenteredText(app->renderer, board_center_x, board_center_y, overlay_scale, "Match starts in: %d", cd);
-                else RenderCenteredText(app->renderer, board_center_x, board_center_y, overlay_scale, "Waiting for opponent...");
+                if (cd > 0) RenderCenteredText(app->renderer.get(), board_center_x, board_center_y, overlay_scale, "Match starts in: %d", cd);
+                else RenderCenteredText(app->renderer.get(), board_center_x, board_center_y, overlay_scale, "Waiting for opponent...");
             }
             
             if (app->net_client->has_weak_connection()) {
-                SDL_SetRenderDrawColor(app->renderer, 255, 165, 0, 255);
-                RenderCenteredText(app->renderer, board_center_x, board_center_y + 25.0f * overlay_scale, overlay_scale, "Weak Connection!");
+                SDL_SetRenderDrawColor(app->renderer.get(), 255, 165, 0, 255);
+                RenderCenteredText(app->renderer.get(), board_center_x, board_center_y + 25.0f * overlay_scale, overlay_scale, "Weak Connection!");
             }
             if (SDL_GetTicks() < app->global_freeze_until) {
-                SDL_SetRenderDrawColor(app->renderer, 0, 255, 255, 255);
-                RenderCenteredText(app->renderer, board_center_x, board_center_y + 50.0f * overlay_scale, overlay_scale, "POWER ACTIVE - FROZEN!");
+                SDL_SetRenderDrawColor(app->renderer.get(), 0, 255, 255, 255);
+                RenderCenteredText(app->renderer.get(), board_center_x, board_center_y + 50.0f * overlay_scale, overlay_scale, "POWER ACTIVE - FROZEN!");
             }
         }
     }
 
-    SDL_RenderPresent(app->renderer);
+    SDL_RenderPresent(app->renderer.get());
     return app->app_quit;
 }
 
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
-    auto* app = (AppContext*)appstate;
-    if (app) {
-        SDL_DestroyRenderer(app->renderer);
-        SDL_DestroyWindow(app->window);
-        delete app;
-    }
+    auto* app = static_cast<AppContext*>(appstate);
+    delete app;
     SDL_Quit();
 }

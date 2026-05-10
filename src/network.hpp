@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3_net/SDL_net.h>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -127,8 +128,8 @@ public:
     const GameStatePacket& get_opponent_state() const { return opponent_state; }
 
 private:
-    NET_StreamSocket* sock = nullptr;
-    NET_Address* addr = nullptr;
+    std::unique_ptr<NET_StreamSocket, void(*)(NET_StreamSocket*)> sock{nullptr, NET_DestroyStreamSocket};
+    std::unique_ptr<NET_Address, void(*)(NET_Address*)> addr{nullptr, NET_UnrefAddress};
     bool connected = false;
     bool opponent_ready = false;
     bool seed_ready = false;

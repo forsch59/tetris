@@ -1,0 +1,15 @@
+---
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: Latest
+IndentWidth: 4
+TabWidth: 4
+ColumnLimit: 140
+PointerAlignment: Left
+AccessModifierOffset: -4
+AlignOperands: true
+AlwaysBreakTemplateDeclarations: Yes
+DerivePointerAlignment: false
+IncludeBlocks: Regroup
+IndentCaseLabels: true
+...

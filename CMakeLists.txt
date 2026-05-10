@@ -8,6 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Export compile commands for VS Code IntelliSense
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Enable clang-tidy with warnings as errors
+# set(CMAKE_CXX_CLANG_TIDY "clang-tidy;--warnings-as-errors=*")
+set(CMAKE_CXX_CLANG_TIDY "clang-tidy;--use-color")
+
 # Add SDL3
 add_subdirectory(external/SDL)
 add_subdirectory(external/SDL_net)
@@ -16,33 +20,29 @@ add_subdirectory(external/SDL_net)
 file(GLOB SOURCES "src/*.cpp")
 list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/test_main.cpp")
 
-# Create the executable
+# Helper function to define targets
+function(add_tetris_target TARGET_NAME CLIENT_ID_VAL IS_TEST)
+    if(IS_TEST)
+        add_executable(${TARGET_NAME} src/test_main.cpp src/network.cpp)
+    elseif(ANDROID)
+        add_library(${TARGET_NAME} SHARED ${SOURCES})
+    else()
+        add_executable(${TARGET_NAME} ${SOURCES})
+    endif()
+
+    target_include_directories(${TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src external/SDL_net/include/SDL3_net)
+    target_compile_definitions(${TARGET_NAME} PRIVATE CLIENT_ID=${CLIENT_ID_VAL})
+    target_link_libraries(${TARGET_NAME} PRIVATE SDL3::SDL3 SDL3_net::SDL3_net)
+endfunction()
+
+# Define targets
 if(ANDROID)
-    add_library(main SHARED ${SOURCES})
-    
-    # Default CLIENT_ID if not passed via Gradle
     if(NOT DEFINED CLIENT_ID)
         set(CLIENT_ID 1)
     endif()
-    
-    # Use 'main' for Android-specific commands
-    target_include_directories(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src external/SDL_net/include/SDL3_net)
-    target_compile_definitions(main PRIVATE CLIENT_ID=${CLIENT_ID})
-    target_link_libraries(main PRIVATE SDL3::SDL3 SDL3_net::SDL3_net)
+    add_tetris_target(main ${CLIENT_ID} FALSE)
 else()
-    add_executable(Tetris1 ${SOURCES})
-    target_include_directories(Tetris1 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src external/SDL_net/include/SDL3_net)
-    target_compile_definitions(Tetris1 PRIVATE CLIENT_ID=1)
-    target_link_libraries(Tetris1 PRIVATE SDL3::SDL3 SDL3_net::SDL3_net)
-
-    add_executable(Tetris2 ${SOURCES})
-    target_include_directories(Tetris2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src external/SDL_net/include/SDL3_net)
-    target_compile_definitions(Tetris2 PRIVATE CLIENT_ID=2)
-    target_link_libraries(Tetris2 PRIVATE SDL3::SDL3 SDL3_net::SDL3_net)
-
-    # Add TetrisTests target
-    add_executable(TetrisTests src/test_main.cpp src/network.cpp)
-    target_include_directories(TetrisTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src external/SDL_net/include/SDL3_net)
-    target_compile_definitions(TetrisTests PRIVATE CLIENT_ID=1)
-    target_link_libraries(TetrisTests PRIVATE SDL3::SDL3 SDL3_net::SDL3_net)
+    add_tetris_target(Tetris1 1 FALSE)
+    add_tetris_target(Tetris2 2 FALSE)
+    add_tetris_target(TetrisTests 1 TRUE)
 endif()

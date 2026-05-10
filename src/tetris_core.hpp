@@ -1,13 +1,15 @@
 #pragma once
 
-#include <vector>
-#include <array>
-#include <cstdint>
-#include <random>
-#include <atomic>
-#include <memory>
-#include <cstring>
 #include "network.hpp"
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cstdint>
+#include <cstring>
+#include <memory>
+#include <random>
+#include <vector>
 
 struct ColorRGBA {
     uint8_t r, g, b, a;
@@ -26,14 +28,14 @@ struct PieceInfo {
 };
 
 const TetrominoDef TETROMINO_DEFS[8] = {
-    { {{0,0,0,0}, {0,0,0,0}, {0,0,0,0}, {0,0,0,0}}, 0, {0, 0, 0, 0} }, // Empty
-    { {{0,0,0,0}, {1,1,1,1}, {0,0,0,0}, {0,0,0,0}}, 4, {0, 255, 255, 255} }, // I
-    { {{1,1,0,0}, {1,1,0,0}, {0,0,0,0}, {0,0,0,0}}, 2, {255, 255, 0, 255} }, // O
-    { {{0,1,0,0}, {1,1,1,0}, {0,0,0,0}, {0,0,0,0}}, 3, {128, 0, 128, 255} }, // T
-    { {{0,0,1,0}, {1,1,1,0}, {0,0,0,0}, {0,0,0,0}}, 3, {255, 165, 0, 255} }, // L
-    { {{1,0,0,0}, {1,1,1,0}, {0,0,0,0}, {0,0,0,0}}, 3, {0, 0, 255, 255} },   // J
-    { {{0,1,1,0}, {1,1,0,0}, {0,0,0,0}, {0,0,0,0}}, 3, {0, 255, 0, 255} },   // S
-    { {{1,1,0,0}, {0,1,1,0}, {0,0,0,0}, {0,0,0,0}}, 3, {255, 0, 0, 255} }    // Z
+    {{{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 0, {0, 0, 0, 0}},       // Empty
+    {{{0, 0, 0, 0}, {1, 1, 1, 1}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 4, {0, 255, 255, 255}}, // I
+    {{{1, 1, 0, 0}, {1, 1, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 2, {255, 255, 0, 255}}, // O
+    {{{0, 1, 0, 0}, {1, 1, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 3, {128, 0, 128, 255}}, // T
+    {{{0, 0, 1, 0}, {1, 1, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 3, {255, 165, 0, 255}}, // L
+    {{{1, 0, 0, 0}, {1, 1, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 3, {0, 0, 255, 255}},   // J
+    {{{0, 1, 1, 0}, {1, 1, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 3, {0, 255, 0, 255}},   // S
+    {{{1, 1, 0, 0}, {0, 1, 1, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, 3, {255, 0, 0, 255}}    // Z
 };
 
 class SharedPieceQueue {
@@ -62,10 +64,11 @@ public:
             if (crystal_dist(rng) == 0) {
                 // Determine which block of the base shape gets the crystal
                 std::vector<std::pair<int, int>> blocks;
-                for(int r=0; r<4; r++)
-                    for(int c=0; c<4; c++)
-                        if(TETROMINO_DEFS[t + 1].shape[r][c]) blocks.push_back({r, c});
-                
+                for (int r = 0; r < 4; r++)
+                    for (int c = 0; c < 4; c++)
+                        if (TETROMINO_DEFS[t + 1].shape[r][c])
+                            blocks.push_back({r, c});
+
                 if (!blocks.empty()) {
                     std::uniform_int_distribution<int> b_dist(0, (int)blocks.size() - 1);
                     auto p = blocks[b_dist(rng)];
@@ -125,9 +128,10 @@ public:
             spawn_request_pending = false;
         }
     }
-    
+
     void request_spawn() {
-        if (!shared_queue || !shared_queue->net || spawn_request_pending) return;
+        if (!shared_queue || !shared_queue->net || spawn_request_pending)
+            return;
         spawn_request_pending = true;
         waiting_for_spawn = true;
         shared_queue->net->queue_lock_action();
@@ -140,7 +144,8 @@ public:
             for (int x = 0; x < WIDTH; ++x) {
                 int idx = y * WIDTH + x;
                 uint8_t val = (uint8_t)grid[y][x].color & 0x07;
-                if (grid[y][x].has_crystal) val |= 0x08;
+                if (grid[y][x].has_crystal)
+                    val |= 0x08;
                 if (idx % 2 == 0) {
                     out[idx / 2] |= val;
                 } else {
@@ -187,7 +192,8 @@ public:
     }
 
     void process_network() {
-        if (!shared_queue || !shared_queue->net) return;
+        if (!shared_queue || !shared_queue->net)
+            return;
 
         int pending_garbage = shared_queue->net->get_pending_garbage();
         if (pending_garbage > 0) {
@@ -209,13 +215,14 @@ public:
             unpack_grid(opp.grid);
             return;
         }
-        
-        if (!shared_queue->net->is_opponent_ready()) return;
+
+        if (!shared_queue->net->is_opponent_ready())
+            return;
 
         if (waiting_for_spawn && !spawn_request_pending) {
             request_spawn();
         }
-        
+
         if (spawn_request_pending) {
             int granted_index = shared_queue->net->get_claimed_index();
             if (granted_index != -1) {
@@ -224,39 +231,49 @@ public:
                 spawn_request_pending = false;
             }
         }
-        
+
         static uint32_t last_sync = 0;
         uint32_t now = SDL_GetTicks();
         if (now - last_sync > 50) { // 20Hz update rate
             uint8_t packed[100];
             pack_grid(packed);
-            shared_queue->net->send_state(current_piece.type, current_piece.rotation, current_piece.x, current_piece.y, get_crystal_mask(), packed);
+            shared_queue->net->send_state(current_piece.type, current_piece.rotation, current_piece.x, current_piece.y, get_crystal_mask(),
+                                          packed);
             last_sync = now;
         }
     }
 
     void update_shape_only() {
         if (current_piece.type <= 0 || current_piece.type > 7) {
-            std::memset(current_piece.shape, 0, sizeof(current_piece.shape));
-            std::memset(current_piece.has_crystal, 0, sizeof(current_piece.has_crystal));
+            for (auto& row : current_piece.shape)
+                std::fill(std::begin(row), std::end(row), 0);
+            for (auto& row : current_piece.has_crystal)
+                std::fill(std::begin(row), std::end(row), false);
             return;
         }
         const auto& def = TETROMINO_DEFS[current_piece.type];
         int N = def.size;
         int old_shape[4][4];
-        std::memcpy(old_shape, def.shape, sizeof(old_shape));
-        for(int rot=0; rot < current_piece.rotation; rot++) {
+
+        for (int i = 0; i < 4; ++i)
+            std::copy_n(def.shape[i], 4, old_shape[i]);
+
+        for (int rot = 0; rot < current_piece.rotation; rot++) {
             int new_shape[4][4] = {0};
-            for(int r=0; r<N; r++)
-                for(int c=0; c<N; c++)
-                    new_shape[c][N-1-r] = old_shape[r][c];
-            std::memcpy(old_shape, new_shape, sizeof(old_shape));
+            for (int r = 0; r < N; r++)
+                for (int c = 0; c < N; c++)
+                    new_shape[c][N - 1 - r] = old_shape[r][c];
+
+            for (int i = 0; i < 4; ++i)
+                std::copy_n(new_shape[i], 4, old_shape[i]);
         }
-        std::memcpy(current_piece.shape, old_shape, sizeof(old_shape));
+        for (int i = 0; i < 4; ++i)
+            std::copy_n(old_shape[i], 4, current_piece.shape[i]);
     }
 
     void apply_rotation() {
-        if (current_piece.type <= 0 || current_piece.type > 7) return;
+        if (current_piece.type <= 0 || current_piece.type > 7)
+            return;
         const auto& def = TETROMINO_DEFS[current_piece.type];
         int N = def.size;
 
@@ -264,43 +281,50 @@ public:
         if (shared_queue) {
             info = shared_queue->get_piece_at(current_piece_index);
         }
-        
+
         int work_shape[4][4];
         bool work_crystal[4][4];
-        
-        std::memcpy(work_shape, def.shape, sizeof(work_shape));
-        std::memset(work_crystal, 0, sizeof(work_crystal));
+
+        for (int i = 0; i < 4; ++i) {
+            std::copy_n(def.shape[i], 4, work_shape[i]);
+            std::fill_n(work_crystal[i], 4, false);
+        }
+
         if (info.crystal_r != -1) {
             work_crystal[info.crystal_r][info.crystal_c] = true;
         }
 
-        for(int rot=0; rot < current_piece.rotation; rot++) {
+        for (int rot = 0; rot < current_piece.rotation; rot++) {
             int next_shape[4][4] = {0};
             bool next_crystal[4][4] = {false};
-            for(int r=0; r<N; r++) {
-                for(int c=0; c<N; c++) {
-                    next_shape[c][N-1-r] = work_shape[r][c];
-                    next_crystal[c][N-1-r] = work_crystal[r][c];
+            for (int r = 0; r < N; r++) {
+                for (int c = 0; c < N; c++) {
+                    next_shape[c][N - 1 - r] = work_shape[r][c];
+                    next_crystal[c][N - 1 - r] = work_crystal[r][c];
                 }
             }
-            std::memcpy(work_shape, next_shape, sizeof(work_shape));
-            std::memcpy(work_crystal, next_crystal, sizeof(work_crystal));
+            for (int i = 0; i < 4; ++i) {
+                std::copy_n(next_shape[i], 4, work_shape[i]);
+                std::copy_n(next_crystal[i], 4, work_crystal[i]);
+            }
         }
 
-        std::memcpy(current_piece.shape, work_shape, sizeof(work_shape));
-        std::memcpy(current_piece.has_crystal, work_crystal, sizeof(work_crystal));
+        for (int i = 0; i < 4; ++i) {
+            std::copy_n(work_shape[i], 4, current_piece.shape[i]);
+            std::copy_n(work_crystal[i], 4, current_piece.has_crystal[i]);
+        }
     }
 
     void spawn_piece(int index) {
         current_piece_index = index;
         PieceInfo info = shared_queue->get_piece_at(index);
         current_piece = {info.type + 1, 0, WIDTH / 2 - 2, 0};
-        
+
         is_locking = false;
         current_lock_delay = 500;
-        
+
         apply_rotation();
-        
+
         if (check_collision()) {
             game_over = true;
             if (board_active) {
@@ -310,7 +334,8 @@ public:
     }
 
     void update() {
-        if (game_over || waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready()) return;
+        if (game_over || waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready())
+            return;
         current_piece.y++;
         if (check_collision()) {
             current_piece.y--;
@@ -325,8 +350,9 @@ public:
     }
 
     void tick(uint64_t now) {
-        if (!board_active || game_over || waiting_for_spawn) return;
-        
+        if (!board_active || game_over || waiting_for_spawn)
+            return;
+
         if (is_locking) {
             if (now - lock_timer_start >= current_lock_delay) {
                 lock_piece();
@@ -340,7 +366,8 @@ public:
     }
 
     void move(int dx) {
-        if (waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready()) return;
+        if (waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready())
+            return;
         current_piece.x += dx;
         if (check_collision()) {
             current_piece.x -= dx;
@@ -350,7 +377,8 @@ public:
     }
 
     void rotate() {
-        if (waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready()) return;
+        if (waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready())
+            return;
         int old_rot = current_piece.rotation;
         current_piece.rotation = (current_piece.rotation + 1) % 4;
         apply_rotation();
@@ -382,7 +410,8 @@ public:
     }
 
     void hard_drop() {
-        if (game_over || waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready()) return;
+        if (game_over || waiting_for_spawn || !shared_queue || !shared_queue->net || !shared_queue->net->is_opponent_ready())
+            return;
         while (!check_collision()) {
             current_piece.y++;
         }
@@ -421,7 +450,7 @@ public:
                 }
             }
         }
-        
+
         // After shifting the grid, we must ensure current piece is still valid
         if (check_collision()) {
             // If shifting caused collision, try to nudge piece up
@@ -433,13 +462,15 @@ public:
     }
 
     bool check_collision() {
-        for(int r=0; r<4; r++) {
-            for(int c=0; c<4; c++) {
-                if(current_piece.shape[r][c]) {
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                if (current_piece.shape[r][c]) {
                     int nx = current_piece.x + c;
                     int ny = current_piece.y + r;
-                    if(nx < 0 || nx >= WIDTH || ny >= HEIGHT) return true;
-                    if(ny >= 0 && grid[ny][nx].color != 0) return true;
+                    if (nx < 0 || nx >= WIDTH || ny >= HEIGHT)
+                        return true;
+                    if (ny >= 0 && grid[ny][nx].color != 0)
+                        return true;
                 }
             }
         }
@@ -447,14 +478,14 @@ public:
     }
 
     void lock_piece() {
-        for(int r=0; r<4; r++) {
-            for(int c=0; c<4; c++) {
-                if(current_piece.shape[r][c]) {
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                if (current_piece.shape[r][c]) {
                     int nx = current_piece.x + c;
                     int ny = current_piece.y + r;
-                    if(ny >= 0 && ny < HEIGHT && nx >= 0 && nx < WIDTH) {
+                    if (ny >= 0 && ny < HEIGHT && nx >= 0 && nx < WIDTH) {
                         grid[ny][nx].color = current_piece.type;
-                        if(current_piece.has_crystal[r][c]) {
+                        if (current_piece.has_crystal[r][c]) {
                             grid[ny][nx].has_crystal = true;
                         }
                     }
@@ -465,29 +496,39 @@ public:
 
     void clear_lines() {
         int lines_cleared = 0;
-        for(int y=HEIGHT-1; y>=0; y--) {
+        for (int y = HEIGHT - 1; y >= 0; y--) {
             bool full = true;
-            for(int x=0; x<WIDTH; x++) if(grid[y][x].color == 0) full = false;
-            if(full) {
+            for (int x = 0; x < WIDTH; x++)
+                if (grid[y][x].color == 0)
+                    full = false;
+            if (full) {
                 lines_cleared++;
-                for(int x=0; x<WIDTH; x++) {
-                    if(grid[y][x].has_crystal) {
+                for (int x = 0; x < WIDTH; x++) {
+                    if (grid[y][x].has_crystal) {
                         crystals++;
-                        if (stored_powerups < 4) stored_powerups++;
+                        if (stored_powerups < 4)
+                            stored_powerups++;
                     }
                 }
-                for(int yy=y; yy>0; yy--) grid[yy] = grid[yy-1];
-                for(int x=0; x<WIDTH; x++) { grid[0][x].color = 0; grid[0][x].has_crystal = false; }
+                for (int yy = y; yy > 0; yy--)
+                    grid[yy] = grid[yy - 1];
+                for (int x = 0; x < WIDTH; x++) {
+                    grid[0][x].color = 0;
+                    grid[0][x].has_crystal = false;
+                }
                 y++;
             }
         }
 
         if (lines_cleared >= 2 && board_active && shared_queue && shared_queue->net) {
             int garbage_sent = 0;
-            if (lines_cleared == 2) garbage_sent = 1;
-            else if (lines_cleared == 3) garbage_sent = 2;
-            else if (lines_cleared == 4) garbage_sent = 4;
-            
+            if (lines_cleared == 2)
+                garbage_sent = 1;
+            else if (lines_cleared == 3)
+                garbage_sent = 2;
+            else if (lines_cleared == 4)
+                garbage_sent = 4;
+
             if (garbage_sent > 0) {
                 shared_queue->net->send_garbage(garbage_sent);
             }
