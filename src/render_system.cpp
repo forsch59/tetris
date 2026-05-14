@@ -258,8 +258,8 @@ void RenderSystem::Render(AppContext& app) {
         RenderCenteredText(app.renderer.get(), layout.right_btn.x + layout.right_btn.w * 0.5f, layout.right_btn.y + layout.right_btn.h * 0.5f, label_scale, ">");
         RenderCenteredText(app.renderer.get(), layout.rot_btn.x + layout.rot_btn.w * 0.5f, layout.rot_btn.y + layout.rot_btn.h * 0.5f, label_scale, "R");
         RenderCenteredText(app.renderer.get(), layout.drop_btn.x + layout.drop_btn.w * 0.5f, layout.drop_btn.y + layout.drop_btn.h * 0.5f, label_scale, "v");
-        char pwr_txt[4];
-        SDL_snprintf(pwr_txt, sizeof(pwr_txt), "%d", app.board1.stored_powerups);
+        char pwr_txt[8];
+        SDL_snprintf(pwr_txt, sizeof(pwr_txt), "%d", app.board1.crystals);
         RenderCenteredText(app.renderer.get(), layout.pwr_btn.x + layout.pwr_btn.w * 0.5f, layout.pwr_btn.y + layout.pwr_btn.h * 0.5f, label_scale, pwr_txt);
 
         if (app.net_client) {
@@ -280,10 +280,6 @@ void RenderSystem::Render(AppContext& app) {
             if (app.net_client->has_weak_connection()) {
                 SDL_SetRenderDrawColor(app.renderer.get(), 255, 165, 0, 255);
                 RenderCenteredText(app.renderer.get(), board_center_x, board_center_y + 25.0f * overlay_scale, overlay_scale, "Weak Connection!");
-            }
-            if (SDL_GetTicks() < app.global_freeze_until) {
-                SDL_SetRenderDrawColor(app.renderer.get(), 0, 255, 255, 255);
-                RenderCenteredText(app.renderer.get(), board_center_x, board_center_y + 50.0f * overlay_scale, overlay_scale, "POWER ACTIVE - FROZEN!");
             }
         }
     }

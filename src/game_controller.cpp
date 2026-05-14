@@ -44,7 +44,6 @@ void GameController::HandleInput(AppContext& app, SDL_Event* event) {
                 ResetGame(app);
             }
         } else if (app.state == GameState::PLAYING) {
-            if (SDL_GetTicks() < app.global_freeze_until) return;
             if (!app.net_client || !app.net_client->is_opponent_ready()) return;
 
             if (event->key.key == SDLK_LEFT) {
@@ -58,21 +57,7 @@ void GameController::HandleInput(AppContext& app, SDL_Event* event) {
             } else if (event->key.key == SDLK_SPACE) {
                 app.board1.hard_drop();
             } else if (event->key.key == SDLK_LCTRL || event->key.key == SDLK_RCTRL) {
-                if (app.net_client) {
-                    const auto& defs = app.net_client->get_power_defs();
-                    int best_id = -1;
-                    int max_cost = -1;
-                    for (const auto& d : defs) {
-                        if (app.board1.stored_powerups >= (int)d.cost && (int)d.cost > max_cost) {
-                            max_cost = d.cost;
-                            best_id = d.id;
-                        }
-                    }
-                    if (best_id != -1) {
-                        app.board1.stored_powerups -= max_cost;
-                        app.net_client->send_activate_powerup(best_id);
-                    }
-                }
+                // Placeholder for power activation
             }
         }
     } else if (event->type == SDL_EVENT_MOUSE_BUTTON_UP || event->type == SDL_EVENT_FINGER_UP) {
@@ -133,22 +118,7 @@ void GameController::HandleInput(AppContext& app, SDL_Event* event) {
                 }
                 app.last_down_press_time = now;
             } else if (in_rect(layout.pwr_btn)) {
-                if (SDL_GetTicks() < app.global_freeze_until) return;
-                if (app.net_client) {
-                    const auto& defs = app.net_client->get_power_defs();
-                    int best_id = -1;
-                    int max_cost = -1;
-                    for (const auto& d : defs) {
-                        if (app.board1.stored_powerups >= (int)d.cost && (int)d.cost > max_cost) {
-                            max_cost = d.cost;
-                            best_id = d.id;
-                        }
-                    }
-                    if (best_id != -1) {
-                        app.board1.stored_powerups -= max_cost;
-                        app.net_client->send_activate_powerup(best_id);
-                    }
-                }
+                // Placeholder for power activation
             }
         }
     }
@@ -169,28 +139,9 @@ void GameController::Update(AppContext& app) {
                 app.shared_queue->init_seed(app.net_client->get_seed());
             }
 
-            auto events = app.net_client->get_powerup_events();
-            for (const auto& ev : events) {
-                const auto& defs = app.net_client->get_power_defs();
-                for (const auto& d : defs) {
-                    if (d.id == ev.power_id) {
-                        app.global_freeze_until = SDL_GetTicks() + d.freeze_time_ms;
-                        bool is_activator = (ev.activator_id == app.net_client->get_my_id());
-                        bool target_me = (d.target == 0 && is_activator) || (d.target == 1 && !is_activator);
-                        if (target_me)
-                            app.board1.apply_power_effect(d.effect_type, d.effect_param);
-
-                        if (!is_activator) {
-                            app.board1.discard_current_piece();
-                        }
-                        break;
-                    }
-                }
-            }
-
             int pending_garbage = app.net_client->get_pending_garbage();
             if (pending_garbage > 0) {
-                app.board1.apply_power_effect(2, pending_garbage);
+                app.board1.add_garbage_rows(pending_garbage);
             }
 
             if (app.net_client->is_game_over()) {
@@ -251,10 +202,8 @@ void GameController::Update(AppContext& app) {
             }
         }
 
-        if (current_time >= app.global_freeze_until) {
-            app.board1.tick(current_time);
-            app.board2.tick(current_time);
-        }
+        app.board1.tick(current_time);
+        app.board2.tick(current_time);
         
         uint64_t elapsed_ms = 0;
         if (app.net_client && app.net_client->is_opponent_ready()) {
@@ -275,14 +224,14 @@ void GameController::Update(AppContext& app) {
         }
 
         static Uint64 last_time = 0;
-        if (current_time >= app.global_freeze_until && current_time - last_time > drop_interval && 
+        if (current_time - last_time > drop_interval && 
             app.net_client && app.net_client->is_opponent_ready()) {
             app.board1.update();
             app.board2.update();
             last_time = current_time;
         }
 
-        if (app.down_btn_pressed && current_time >= app.global_freeze_until) {
+        if (app.down_btn_pressed) {
             if (current_time - app.down_btn_hold_start > 200) {
                 if (current_time - app.last_soft_drop_time > 50) {
                     app.board1.update();

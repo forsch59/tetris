@@ -103,7 +103,6 @@ public:
     Piece current_piece;
     int current_piece_index = -1;
     int crystals = 0;
-    int stored_powerups = 0;
     int score = 0;
     bool game_over = false;
     bool waiting_for_spawn = true;
@@ -376,40 +375,22 @@ public:
         }
     }
 
-    void apply_power_effect(int effect_type, int param) {
-        if (effect_type == 1) { // REMOVE_ROW
-            for (int i = 0; i < param; ++i) {
-                // Remove bottom row
-                for (int y = HEIGHT - 1; y > 0; --y) {
-                    grid[y] = grid[y - 1];
-                }
-                for (int x = 0; x < WIDTH; ++x) {
-                    grid[0][x].color = 0;
-                    grid[0][x].has_crystal = false;
-                }
+    void add_garbage_rows(int count) {
+        for (int i = 0; i < count; ++i) {
+            // Shift up
+            for (int y = 0; y < HEIGHT - 1; ++y) {
+                grid[y] = grid[y + 1];
             }
-        } else if (effect_type == 2) { // ADD_ROW
-            for (int i = 0; i < param; ++i) {
-                // Shift up
-                for (int y = 0; y < HEIGHT - 1; ++y) {
-                    grid[y] = grid[y + 1];
-                }
-                // Add garbage row at bottom
-                int hole_x = std::rand() % WIDTH;
-                for (int x = 0; x < WIDTH; ++x) {
-                    grid[HEIGHT - 1][x].color = (x == hole_x) ? 0 : 7;
-                    grid[HEIGHT - 1][x].has_crystal = false;
-                }
+            // Add garbage row at bottom
+            int hole_x = std::rand() % WIDTH;
+            for (int x = 0; x < WIDTH; ++x) {
+                grid[HEIGHT - 1][x].color = (x == hole_x) ? 0 : 7;
+                grid[HEIGHT - 1][x].has_crystal = false;
             }
         }
-
-        // After shifting the grid, we must ensure current piece is still valid
+        // If shifting caused collision, try to nudge piece up
         if (check_collision()) {
-            // If shifting caused collision, try to nudge piece up
             current_piece.y--;
-            if (check_collision()) {
-                // If still colliding, it might stay colliding until moved
-            }
         }
     }
 
@@ -458,8 +439,6 @@ public:
                 for (int x = 0; x < WIDTH; x++) {
                     if (grid[y][x].has_crystal) {
                         crystals++;
-                        if (stored_powerups < 4)
-                            stored_powerups++;
                     }
                 }
                 for (int yy = y; yy > 0; yy--)

@@ -38,7 +38,6 @@ struct AppContext {
     bool skip_menu = true; // Flag for testing
     uint64_t match_start_time = 0;
     bool match_started = false;
-    uint64_t global_freeze_until = 0;
     
     bool board1_spawn_requested = false;
     bool game_over_sent = false;
