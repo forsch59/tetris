@@ -55,6 +55,13 @@ static_assert(sizeof(GameStatePacket) == 112, "GameStatePacket size mismatch");
 
 class NetworkClient {
 public:
+    enum class ConnectionState {
+        DISCONNECTED,
+        RESOLVING,
+        CONNECTING,
+        CONNECTED
+    };
+
     NetworkClient();
     ~NetworkClient();
 
@@ -92,6 +99,8 @@ public:
 private:
     std::unique_ptr<NET_StreamSocket, void(*)(NET_StreamSocket*)> sock{nullptr, NET_DestroyStreamSocket};
     std::unique_ptr<NET_Address, void(*)(NET_Address*)> addr{nullptr, NET_UnrefAddress};
+    ConnectionState state = ConnectionState::DISCONNECTED;
+    uint16_t target_port = 0;
     bool connected = false;
     bool opponent_ready = false;
     bool seed_ready = false;

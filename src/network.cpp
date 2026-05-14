@@ -18,31 +18,59 @@ NetworkClient::~NetworkClient() {
 bool NetworkClient::connect(const char* host, uint16_t port) {
     SDL_Log("[NET %d] Resolving %s...", CLIENT_ID, host);
     addr.reset(NET_ResolveHostname(host));
-    if (!addr) return false;
-    
-    if (NET_WaitUntilResolved(addr.get(), 5000) != NET_SUCCESS) {
-        SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] Host resolution failed", CLIENT_ID);
+    if (!addr) {
+        SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] Failed to start resolution: %s", CLIENT_ID, SDL_GetError());
         return false;
     }
 
-    SDL_Log("[NET %d] Connecting to %s:%d...", CLIENT_ID, host, port);
-    sock.reset(NET_CreateClient(addr.get(), port));
-    if (!sock) {
-        SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] Socket creation failed: %s", CLIENT_ID, SDL_GetError());
-        return false;
-    }
-
-    if (NET_WaitUntilConnected(sock.get(), 5000) == NET_SUCCESS) {
-        connected = true;
-        SDL_Log("[NET %d] CONNECTED to server", CLIENT_ID);
-        return true;
-    }
-    SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] Connection timed out: %s", CLIENT_ID, SDL_GetError());
-    return false;
+    target_port = port;
+    state = ConnectionState::RESOLVING;
+    return true;
 }
 
 void NetworkClient::update() {
-    if (!sock || !connected) return;
+    if (state == ConnectionState::RESOLVING) {
+        NET_Status status = NET_GetAddressStatus(addr.get());
+        if (status == NET_SUCCESS) {
+            SDL_Log("[NET %d] Resolved, connecting to port %d...", CLIENT_ID, target_port);
+            sock.reset(NET_CreateClient(addr.get(), target_port));
+            if (!sock) {
+                SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] Socket creation failed: %s", CLIENT_ID, SDL_GetError());
+                state = ConnectionState::DISCONNECTED;
+            } else {
+                state = ConnectionState::CONNECTING;
+            }
+        } else if (status == NET_FAILURE) {
+            SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] Host resolution failed: %s", CLIENT_ID, SDL_GetError());
+            state = ConnectionState::DISCONNECTED;
+        }
+        return;
+    }
+
+    if (state == ConnectionState::CONNECTING) {
+        NET_Status status = NET_GetConnectionStatus(sock.get());
+        if (status == NET_SUCCESS) {
+            SDL_Log("[NET %d] CONNECTED to server", CLIENT_ID);
+            connected = true;
+            state = ConnectionState::CONNECTED;
+        } else if (status == NET_FAILURE) {
+            SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] Connection failed: %s", CLIENT_ID, SDL_GetError());
+            state = ConnectionState::DISCONNECTED;
+        }
+        return;
+    }
+
+    if (state != ConnectionState::CONNECTED || !sock) {
+        return;
+    }
+
+    // Safety check: if pending queue grows too large (> 512 KB), something is wrong.
+    if (NET_GetStreamSocketPendingWrites(sock.get()) > 512 * 1024) {
+        SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] DISCONNECTED: Pending write queue overflow (>512KB)", CLIENT_ID);
+        connected = false;
+        state = ConnectionState::DISCONNECTED;
+        return;
+    }
 
     uint8_t buffer[1024];
     int bytes_read;
