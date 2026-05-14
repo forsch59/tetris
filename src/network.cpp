@@ -167,37 +167,19 @@ bool NetworkClient::send_packet(const void* data, size_t len) {
     return true;
 }
 
-void NetworkClient::queue_lock_action() {
-    SDL_Log("[NET %d] Sending C_LOCK_PIECE (requesting new piece)", CLIENT_ID);
+void NetworkClient::send_command(PacketType type, uint16_t data) {
     if (!connected) return;
+    if (type == PacketType::C_LOCK_PIECE) {
+        SDL_Log("[NET %d] Sending C_LOCK_PIECE (requesting new piece)", CLIENT_ID);
+    }
     CommandPacket p;
-    p.header.type = PacketType::C_LOCK_PIECE;
+    p.header.type = type;
     p.header.client_id = my_id;
     p.header.sequence = sequence_counter++;
-    p.data = 0;
+    p.data = data;
     if (!send_packet(&p, sizeof(p))) {
         connected = false;
     }
-}
-
-void NetworkClient::send_game_over() {
-    if (!connected) return;
-    CommandPacket p;
-    p.header.type = PacketType::C_GAME_OVER;
-    p.header.client_id = my_id;
-    p.header.sequence = sequence_counter++;
-    p.data = 0;
-    send_packet(&p, sizeof(p));
-}
-
-void NetworkClient::send_garbage(int lines) {
-    if (!connected) return;
-    CommandPacket p;
-    p.header.type = PacketType::C_SEND_GARBAGE;
-    p.header.client_id = my_id;
-    p.header.sequence = sequence_counter++;
-    p.data = (uint16_t)lines;
-    send_packet(&p, sizeof(p));
 }
 
 void NetworkClient::send_state(int8_t type, int8_t rot, int8_t x, int8_t y, uint16_t crystal_mask, const uint8_t* grid_data) {

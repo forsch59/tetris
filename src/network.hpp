@@ -61,10 +61,8 @@ public:
     bool connect(const char* host, uint16_t port);
     void update();
     
-    void queue_lock_action();
-    void send_game_over();
+    void send_command(PacketType type, uint16_t data = 0);
     void send_state(int8_t type, int8_t rot, int8_t x, int8_t y, uint16_t crystal_mask, const uint8_t* grid_data);
-    void send_garbage(int lines);
 
     bool is_connected() const { return connected; }
     bool is_opponent_ready() const { return opponent_ready; }

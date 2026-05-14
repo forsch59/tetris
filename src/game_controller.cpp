@@ -166,7 +166,7 @@ void GameController::Update(AppContext& app) {
                 }
 
                 if (app.board1.spawn_request_pending && !app.board1_spawn_requested) {
-                    app.net_client->queue_lock_action();
+                    app.net_client->send_command(PacketType::C_LOCK_PIECE);
                     app.board1_spawn_requested = true;
                 }
 
@@ -182,12 +182,12 @@ void GameController::Update(AppContext& app) {
                 }
 
                 if (app.board1.game_over && !app.game_over_sent) {
-                    app.net_client->send_game_over();
+                    app.net_client->send_command(PacketType::C_GAME_OVER);
                     app.game_over_sent = true;
                 }
 
                 if (app.board1.pending_outgoing_garbage > 0) {
-                    app.net_client->send_garbage(app.board1.pending_outgoing_garbage);
+                    app.net_client->send_command(PacketType::C_SEND_GARBAGE, app.board1.pending_outgoing_garbage);
                     app.board1.pending_outgoing_garbage = 0;
                 }
 
