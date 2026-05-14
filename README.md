@@ -1,10 +1,13 @@
 ## Dependencies
+```bash
 sudo apt update
 sudo apt install build-essential cmake ninja-build git pkg-config
 sudo apt update
 sudo apt install libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxinerama-dev libxxf86vm-dev libxss-dev libgl1-mesa-dev libdbus-1-dev libudev-dev libgles2-mesa-dev libegl1-mesa-dev libibus-1.0-dev fcitx-libs-dev libwayland-dev libxkbcommon-dev wayland-protocols libpipewire-0.3-dev libdecor-0-dev libxtst-dev
+```
 
 ### Android emulator install
+```bash
 sudo apt install qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils
 sudo usermod -aG kvm $USER
 
@@ -16,6 +19,7 @@ export PATH=$PATH:$ANDROID_HOME/tools
 export PATH=$PATH:~/android-studio/android-studio/bin
 cd ~/android-studio/android-studio/bin
 ./studio.sh
+```
 
 Open Android Studio and navigate to Tools > SDK Manager.
 Under the SDK Platforms tab, ensure the latest Android API (e.g., API 35 or 36) is checked.
@@ -37,33 +41,115 @@ In vscode install Android iOS Emulator
 ## BUILD & RUN
 
 ### Linux
+```bash
 mkdir build
 cd build
 cmake ..
 cmake --build . -j$(nproc)
 ./Tetris
+```
 
 ### Android emulator
 Create file: android-project/local.properties
 Add to file: sdk.dir=/home/fors/Android/Sdk
+```bash
 ~/Android/Sdk/emulator/emulator -list-avds
 ~/Android/Sdk/emulator/emulator -avd YOUR_DEVICE_NAME &
 cd ../android-project
 ./gradlew installDebug
+```
 
 ## Useful
 
 ### Gradle
+```bash
 ./gradlew clean
+```
 
 ### Android emulator
+```bash
 ~/Android/Sdk/platform-tools/adb emu kill
 adb devices
 adb -s emulator-5554 logcat -c
 adb -s emulator-5554 logcat
+```
 
 ## Server
+```bash
 python ./backend/server.py
-
+```
 ## TODO
 Ensure server client are not started in each emulator, could be better to try linux first for networking
+
+## Game
+
+### Pillars
+IS IT FUN?
+DOES IT STAY FUN?
+
+#### Movement
+- Tactile Feedback: Everything must have a "click," "thud," or vibration; the UI should feel physical.
+
+#### Social & Multiplayer
+- Psychological Warfare: The game is played as much in the chat/mind as it is on the screen (e.g., Among Us).
+
+#### Aesthetics
+- Retro-Futurism: A very specific aesthetic blend that dictates all art assets.
+
+### Features
+
+#### Player statistics
+- GPS
+- Wins/loss ratio
+- Rage quit ratio
+- Favorite powers
+- Dynamic win points (more vs better opponent)
+
+#### Game customization
+- Building powers
+- Selecting powers
+- Selecting map
+- Handicap
+
+#### Player customization
+- Avatar
+- Name
+- Power stacking
+
+#### Powers
+- Destroy random tetrominos
+- Fill holes
+- Copy board
+- Filling wave
+- Cannot drop
+- Cannot rotate
+- Unbreakable tetrominos
+- Solve captcha (preferably in board)
+- Change bindings
+- Click tetrominos to unlock
+- Cannot see next tetromino
+- Counter power
+
+#### Dark Powers
+- Vibration
+- Lower light setting
+- Color blind
+- IQ test (preferably in board)
+- Flip screen
+- Insults
+- Pronounce words
+- Force to shout words to continue
+- Gambling
+- Thick finger punishment
+- Moving buttons
+- Popup ads
+- Runaway block
+- Permanent handicaps
+- Gyroscope
+- Proximity Sensor
+- Magnetometer
+
+#### Progress
+- Leaderbard
+- Unlock dark powers
+- Badges
