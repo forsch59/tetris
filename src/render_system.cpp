@@ -182,8 +182,8 @@ void RenderSystem::Render(AppContext& app) {
 
     } else if (app.state == GameState::GAME_OVER) {
         float go_text_scale = 2.0f * ui_scale;
-        if (app.net_client && app.net_client->is_game_over()) {
-            if (app.net_client->am_i_winner()) {
+        if (app.net_client && (app.board1.game_over || app.board2.game_over)) {
+            if (app.board2.game_over && !app.board1.game_over) {
                 SDL_SetRenderDrawColor(app.renderer.get(), 0, 255, 0, 255);
                 RenderCenteredText(app.renderer.get(), render_w * 0.5f, render_h * 0.4f, go_text_scale, "YOU WIN!");
             } else {
@@ -220,7 +220,7 @@ void RenderSystem::Render(AppContext& app) {
         DrawBoardRel(app, app.board2, layout.opp_grid, 0, 0);
 
         if (app.board1.shared_queue && app.net_client) {
-            int next_index = app.net_client->get_global_next_index();
+            int next_index = app.global_next_index;
             int num_next = 3;
             float next_cell_size = (layout.next_area.w / 5.0f);
             float next_offset_y = layout.next_area.y + 15.0f * layout.text_scale;
@@ -270,14 +270,14 @@ void RenderSystem::Render(AppContext& app) {
             if (!app.net_client->is_connected()) {
                 SDL_SetRenderDrawColor(app.renderer.get(), 255, 100, 100, 255);
                 RenderCenteredText(app.renderer.get(), board_center_x, board_center_y, overlay_scale, "Waiting for server...");
-            } else if (!app.net_client->is_opponent_ready()) {
+            } else if (!app.opponent_ready) {
                 SDL_SetRenderDrawColor(app.renderer.get(), 255, 255, 0, 255);
-                int cd = app.net_client->get_countdown();
+                int cd = app.countdown_val;
                 if (cd > 0) RenderCenteredText(app.renderer.get(), board_center_x, board_center_y, overlay_scale, "Match starts in: %d", cd);
                 else RenderCenteredText(app.renderer.get(), board_center_x, board_center_y, overlay_scale, "Waiting for opponent...");
             }
             
-            if (app.net_client->has_weak_connection()) {
+            if (app.weak_conn) {
                 SDL_SetRenderDrawColor(app.renderer.get(), 255, 165, 0, 255);
                 RenderCenteredText(app.renderer.get(), board_center_x, board_center_y + 25.0f * overlay_scale, overlay_scale, "Weak Connection!");
             }

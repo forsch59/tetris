@@ -27,6 +27,7 @@ void GameController::ResetGame(AppContext& app) {
     app.board2.set_shared_queue(app.shared_queue, false);
     
     app.match_started = false;
+    app.opponent_ready = false;
     app.game_over_sent = false;
     app.board1_spawn_requested = false;
 }
@@ -44,7 +45,7 @@ void GameController::HandleInput(AppContext& app, SDL_Event* event) {
                 ResetGame(app);
             }
         } else if (app.state == GameState::PLAYING) {
-            if (!app.net_client || !app.net_client->is_opponent_ready()) return;
+            if (!app.net_client || !app.opponent_ready) return;
 
             if (event->key.key == SDLK_LEFT) {
                 app.board1.move(-1);
@@ -97,7 +98,7 @@ void GameController::HandleInput(AppContext& app, SDL_Event* event) {
                 return;
             }
 
-            if (!app.net_client || !app.net_client->is_opponent_ready()) return;
+            if (!app.net_client || !app.opponent_ready) return;
 
             if (in_rect(layout.left_btn)) {
                 app.board1.move(-1);
@@ -135,32 +136,56 @@ void GameController::Update(AppContext& app) {
         if (app.net_client) {
             app.net_client->update();
 
-            if (app.net_client->is_seed_ready() && !app.shared_queue->seed_initialized) {
-                app.shared_queue->init_seed(app.net_client->get_seed());
+            NetworkEvent event;
+            while (app.net_client->poll_event(event)) {
+                switch (event.type) {
+                    case PacketType::S_MATCH_START:
+                        if (!app.shared_queue->seed_initialized) {
+                            app.shared_queue->init_seed(event.data);
+                        }
+                        app.opponent_ready = true;
+                        break;
+                    case PacketType::S_COUNTDOWN:
+                        app.countdown_val = event.data;
+                        break;
+                    case PacketType::S_GARBAGE_SIGNAL:
+                        app.board1.add_garbage_rows(event.data);
+                        break;
+                    case PacketType::S_GAME_OVER:
+                        app.board1.game_over = true;
+                        app.board2.game_over = true;
+                        break;
+                    case PacketType::S_GRANT_PIECE:
+                        SDL_Log("[APP] Spawn request fulfilled with index %d", event.data);
+                        app.board1.spawn_piece(event.data);
+                        app.board1.waiting_for_spawn = false;
+                        app.board1.spawn_request_pending = false;
+                        app.board1_spawn_requested = false;
+                        break;
+                    case PacketType::S_STATE_BROADCAST:
+                        if (!app.board2.board_active && event.has_state) {
+                            app.board2.current_piece.type = event.state.piece_type;
+                            app.board2.current_piece.rotation = event.state.piece_rot;
+                            app.board2.current_piece.x = event.state.piece_x;
+                            app.board2.current_piece.y = event.state.piece_y;
+                            app.board2.set_crystal_mask(event.state.piece_crystal_mask);
+                            app.board2.update_shape_only();
+                            app.board2.unpack_grid(event.state.grid);
+                        }
+                        break;
+                    case PacketType::S_NEXT_PIECE_UPDATE:
+                        app.global_next_index = event.data;
+                        break;
+                    case PacketType::S_WEAK_CONNECTION:
+                        app.weak_conn = true;
+                        SDL_LogWarn(SDL_LOG_CATEGORY_CUSTOM, "Weak Connection detected!");
+                        break;
+                    default:
+                        break;
+                }
             }
 
-            int pending_garbage = app.net_client->get_pending_garbage();
-            if (pending_garbage > 0) {
-                app.board1.add_garbage_rows(pending_garbage);
-            }
-
-            if (app.net_client->is_game_over()) {
-                app.board1.game_over = true;
-                app.board2.game_over = true;
-            }
-
-            if (!app.board2.board_active) {
-                const auto& opp = app.net_client->get_opponent_state();
-                app.board2.current_piece.type = opp.piece_type;
-                app.board2.current_piece.rotation = opp.piece_rot;
-                app.board2.current_piece.x = opp.piece_x;
-                app.board2.current_piece.y = opp.piece_y;
-                app.board2.set_crystal_mask(opp.piece_crystal_mask);
-                app.board2.update_shape_only();
-                app.board2.unpack_grid(opp.grid);
-            }
-
-            if (app.board1.board_active && app.net_client->is_opponent_ready()) {
+            if (app.board1.board_active && app.opponent_ready) {
                 if (app.board1.waiting_for_spawn && !app.board1.spawn_request_pending) {
                     app.board1.request_spawn();
                 }
@@ -168,17 +193,6 @@ void GameController::Update(AppContext& app) {
                 if (app.board1.spawn_request_pending && !app.board1_spawn_requested) {
                     app.net_client->send_command(PacketType::C_LOCK_PIECE);
                     app.board1_spawn_requested = true;
-                }
-
-                if (app.board1.spawn_request_pending) {
-                    int granted_index = app.net_client->get_claimed_index();
-                    if (granted_index != -1) {
-                        SDL_Log("[APP] Spawn request fulfilled with index %d", granted_index);
-                        app.board1.spawn_piece(granted_index);
-                        app.board1.waiting_for_spawn = false;
-                        app.board1.spawn_request_pending = false;
-                        app.board1_spawn_requested = false;
-                    }
                 }
 
                 if (app.board1.game_over && !app.game_over_sent) {
@@ -198,6 +212,7 @@ void GameController::Update(AppContext& app) {
                                                   app.board1.current_piece.x, app.board1.current_piece.y,
                                                   app.board1.get_crystal_mask(), packed);
                     app.last_sync = current_time;
+                    app.weak_conn = false;
                 }
             }
         }
@@ -206,7 +221,7 @@ void GameController::Update(AppContext& app) {
         app.board2.tick(current_time);
         
         uint64_t elapsed_ms = 0;
-        if (app.net_client && app.net_client->is_opponent_ready()) {
+        if (app.net_client && app.opponent_ready) {
             if (!app.match_started) {
                 app.match_start_time = current_time;
                 app.match_started = true;
@@ -225,7 +240,7 @@ void GameController::Update(AppContext& app) {
 
         static Uint64 last_time = 0;
         if (current_time - last_time > drop_interval && 
-            app.net_client && app.net_client->is_opponent_ready()) {
+            app.net_client && app.opponent_ready) {
             app.board1.update();
             app.board2.update();
             last_time = current_time;

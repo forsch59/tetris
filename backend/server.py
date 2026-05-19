@@ -38,7 +38,7 @@ S_GARBAGE_SIGNAL = 16
 
 # Packet Structures (Little Endian)
 # All packets are prefixed with a uint16 length (excluding the length field itself)
-HEADER_FMT = "<BBI" # Type (1), ClientID (1), Seq (4) = 6 bytes
+HEADER_FMT = ">BBI" # Type (1), ClientID (1), Seq (4) = 6 bytes
 COMMAND_FMT = HEADER_FMT + "H" # 8 bytes total
 STATE_UPDATE_FMT = HEADER_FMT + "bbbbH100s" # 6 + 1+1+1+1 + 2 + 100 = 112 bytes total
 
@@ -57,7 +57,7 @@ class TetrisServer:
 
     def send_packet(self, sock, fmt, *args):
         payload = struct.pack(fmt, *args)
-        header = struct.pack("<H", len(payload))
+        header = struct.pack(">H", len(payload))
         p_type = payload[0]
         cid = self.clients.index(sock) + 1 if sock in self.clients else 0
         print(f"[NET SEND] -> Client {cid}: {PKT_NAMES.get(p_type, 'UNKNOWN')} (len: {len(payload)}, data: {args[3] if len(args) > 3 else ''})", flush=True)
@@ -128,7 +128,7 @@ class TetrisServer:
 
                         buf = self.client_buffers[s]
                         while len(buf) >= 2:
-                            pkt_len = struct.unpack_from("<H", buf, 0)[0]
+                            pkt_len = struct.unpack_from(">H", buf, 0)[0]
                             if len(buf) < 2 + pkt_len:
                                 break
                             
@@ -165,7 +165,7 @@ class TetrisServer:
             for c in self.clients:
                 self.send_packet(c, COMMAND_FMT, S_GAME_OVER, cid, 0, 0)
         elif p_type == C_SEND_GARBAGE:
-            lines = struct.unpack_from("<H", data, 6)[0]
+            lines = struct.unpack_from(">H", data, 6)[0]
             print(f"GARBAGE: Client {cid} sending {lines} lines to opponent!", flush=True)
             for c in self.clients:
                 if c is not s:
@@ -176,7 +176,7 @@ class TetrisServer:
                 # Update header type to broadcast
                 broadcast_data = bytearray(data)
                 broadcast_data[0] = S_STATE_BROADCAST
-                header = struct.pack("<H", len(broadcast_data))
+                header = struct.pack(">H", len(broadcast_data))
                 for c in self.clients:
                     if c is not s:
                         c.sendall(header + broadcast_data)

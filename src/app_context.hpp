@@ -38,6 +38,10 @@ struct AppContext {
     bool skip_menu = true; // Flag for testing
     uint64_t match_start_time = 0;
     bool match_started = false;
+    bool opponent_ready = false;
+    int countdown_val = -1;
+    int global_next_index = 0;
+    bool weak_conn = false;
     
     bool board1_spawn_requested = false;
     bool game_over_sent = false;

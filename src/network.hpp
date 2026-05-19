@@ -7,7 +7,15 @@
 #include <string>
 #include <vector>
 
-#pragma pack(push, 1)
+#pragma once
+
+#include <SDL3/SDL.h>
+#include <SDL3_net/SDL_net.h>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+#include <queue>
 
 enum class PacketType : uint8_t {
     C_CONNECT = 1,      // Client connects
@@ -25,20 +33,7 @@ enum class PacketType : uint8_t {
     S_GARBAGE_SIGNAL = 16    // Server notifies about incoming garbage
 };
 
-struct PacketHeader {
-    PacketType type;
-    uint8_t client_id;
-    uint32_t sequence;
-};
-
-// 8-byte generic command packet (header is 6 bytes, so we have 2 bytes extra or use 8 total)
-struct CommandPacket {
-    PacketHeader header;
-    uint16_t data;
-};
-
-struct GameStatePacket {
-    PacketHeader header;
+struct GameStatePayload {
     int8_t piece_type;
     int8_t piece_rot;
     int8_t piece_x;
@@ -47,11 +42,15 @@ struct GameStatePacket {
     uint8_t grid[100]; // 10x20 grid, 4 bits per cell = 100 bytes
 };
 
-#pragma pack(pop)
-
-static_assert(sizeof(PacketHeader) == 6, "PacketHeader size mismatch");
-static_assert(sizeof(CommandPacket) == 8, "CommandPacket size mismatch");
-static_assert(sizeof(GameStatePacket) == 112, "GameStatePacket size mismatch");
+struct NetworkEvent {
+    PacketType type;
+    uint8_t client_id;
+    uint32_t sequence;
+    
+    bool has_state = false;
+    uint16_t data = 0;
+    GameStatePayload state{};
+};
 
 class NetworkClient {
 public:
@@ -72,29 +71,9 @@ public:
     void send_state(int8_t type, int8_t rot, int8_t x, int8_t y, uint16_t crystal_mask, const uint8_t* grid_data);
 
     bool is_connected() const { return connected; }
-    bool is_opponent_ready() const { return opponent_ready; }
-    bool is_seed_ready() const { return seed_ready; }
-    bool is_game_over() const { return remote_game_over; }
-    bool am_i_winner() const { return remote_game_over && loser_id != my_id; }
-    bool has_weak_connection() const { return weak_conn; }
-    int get_countdown() const { return countdown_val; }
-    int get_global_next_index() const { return global_next_index; }
-    uint8_t get_my_id() const { return my_id; }
-
-    int get_pending_garbage() {
-        int g = pending_garbage;
-        pending_garbage = 0;
-        return g;
-    }
-
-    uint32_t get_seed() const { return seed; }
-    int get_claimed_index() {
-        int idx = granted_index;
-        granted_index = -1;
-        return idx;
-    }
     
-    const GameStatePacket& get_opponent_state() const { return opponent_state; }
+    // Event polling
+    bool poll_event(NetworkEvent& out_event);
 
 private:
     std::unique_ptr<NET_StreamSocket, void(*)(NET_StreamSocket*)> sock{nullptr, NET_DestroyStreamSocket};
@@ -102,24 +81,14 @@ private:
     ConnectionState state = ConnectionState::DISCONNECTED;
     uint16_t target_port = 0;
     bool connected = false;
-    bool opponent_ready = false;
-    bool seed_ready = false;
-    bool remote_game_over = false;
-    uint8_t loser_id = 0;
-    bool weak_conn = false;
-    uint32_t seed = 0;
-    int granted_index = -1;
     uint32_t sequence_counter = 0;
     uint8_t my_id = 0;
-    int countdown_val = -1;
-    int global_next_index = 0;
-    int pending_garbage = 0;
+
+    std::queue<NetworkEvent> event_queue;
 
     uint8_t recv_buf[4096];
     int recv_buf_len = 0;
 
-    GameStatePacket opponent_state{};
-
     void handle_packet(const uint8_t* data, int len);
-    bool send_packet(const void* data, size_t len);
+    bool send_packet(const uint8_t* data, size_t len);
 };

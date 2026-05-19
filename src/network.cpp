@@ -28,6 +28,13 @@ bool NetworkClient::connect(const char* host, uint16_t port) {
     return true;
 }
 
+bool NetworkClient::poll_event(NetworkEvent& out_event) {
+    if (event_queue.empty()) return false;
+    out_event = event_queue.front();
+    event_queue.pop();
+    return true;
+}
+
 void NetworkClient::update() {
     if (state == ConnectionState::RESOLVING) {
         NET_Status status = NET_GetAddressStatus(addr.get());
@@ -64,7 +71,6 @@ void NetworkClient::update() {
         return;
     }
 
-    // Safety check: if pending queue grows too large (> 512 KB), something is wrong.
     if (NET_GetStreamSocketPendingWrites(sock.get()) > 512 * 1024) {
         SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] DISCONNECTED: Pending write queue overflow (>512KB)", CLIENT_ID);
         connected = false;
@@ -72,125 +78,86 @@ void NetworkClient::update() {
         return;
     }
 
-    uint8_t buffer[1024];
-    int bytes_read;
-    
-    // SDL_net 3 stream sockets are reliable.
-    while (connected && (bytes_read = NET_ReadFromStreamSocket(sock.get(), buffer, sizeof(buffer))) > 0) {
-        if (recv_buf_len + bytes_read > (int)sizeof(recv_buf)) {
-            SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "Receive buffer overflow!");
-            connected = false;
-            return;
-        }
-        std::copy_n(buffer, bytes_read, recv_buf + recv_buf_len);
-        recv_buf_len += bytes_read;
+    void* wait_array[1];
+    wait_array[0] = sock.get();
+    int ready_count = NET_WaitUntilInputAvailable(wait_array, 1, 0); // Non-blocking multiplex poll
 
-        while (recv_buf_len >= 2) {
-            uint16_t pkt_len = SDL_Swap16LE(*(uint16_t*)recv_buf);
-            if (recv_buf_len < 2 + pkt_len) break;
-
-            handle_packet(recv_buf + 2, pkt_len);
-            
-            int remaining = recv_buf_len - (2 + pkt_len);
-            if (remaining > 0) {
-                std::memmove(recv_buf, recv_buf + 2 + pkt_len, remaining);
+    if (ready_count > 0) {
+        uint8_t buffer[1024];
+        int bytes_read;
+        
+        while (connected && (bytes_read = NET_ReadFromStreamSocket(sock.get(), buffer, sizeof(buffer))) > 0) {
+            if (recv_buf_len + bytes_read > (int)sizeof(recv_buf)) {
+                SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "Receive buffer overflow!");
+                connected = false;
+                return;
             }
-            recv_buf_len = remaining;
+            std::copy_n(buffer, bytes_read, recv_buf + recv_buf_len);
+            recv_buf_len += bytes_read;
+
+            while (recv_buf_len >= 2) {
+                uint16_t pkt_len = (recv_buf[0] << 8) | recv_buf[1]; // Big Endian
+                if (recv_buf_len < 2 + pkt_len) break;
+
+                handle_packet(recv_buf + 2, pkt_len);
+                
+                int remaining = recv_buf_len - (2 + pkt_len);
+                if (remaining > 0) {
+                    std::memmove(recv_buf, recv_buf + 2 + pkt_len, remaining);
+                }
+                recv_buf_len = remaining;
+            }
         }
-    }
-    
-    if (connected && bytes_read == -1) {
-        connected = false;
-        SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] DISCONNECTED from server (read failure)", CLIENT_ID);
+        
+        if (connected && bytes_read == -1) {
+            connected = false;
+            SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] DISCONNECTED from server (read failure)", CLIENT_ID);
+        }
+    } else if (ready_count < 0) {
+        SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET %d] Multiplex poll error: %s", CLIENT_ID, SDL_GetError());
     }
 }
 
 void NetworkClient::handle_packet(const uint8_t* data, int len) {
-    if (len < (int)sizeof(PacketHeader)) return;
+    if (len < 6) return; // Minimum 6 bytes for header
     
-    const PacketHeader* header = (const PacketHeader*)data;
+    NetworkEvent event;
+    event.type = static_cast<PacketType>(data[0]);
+    event.client_id = data[1];
+    event.sequence = (data[2] << 24) | (data[3] << 16) | (data[4] << 8) | data[5];
+
+    if (event.type != PacketType::S_STATE_BROADCAST) {
+        SDL_Log("[NET %d RECV] Type: %d, Len: %d", CLIENT_ID, (int)event.type, len);
+    }
     
-    if (header->type != PacketType::S_STATE_BROADCAST) {
-        SDL_Log("[NET %d RECV] Type: %d, Len: %d", CLIENT_ID, (int)header->type, len);
+    // We update my_id if it's MATCH_START so we know what to send out
+    if (event.type == PacketType::S_MATCH_START) {
+        my_id = event.client_id;
     }
 
-    switch (header->type) {
-        case PacketType::S_MATCH_START: {
-            if (len >= (int)sizeof(CommandPacket)) {
-                const CommandPacket* p = (const CommandPacket*)data;
-                my_id = p->header.client_id;
-                seed = p->data;
-                seed_ready = true;
-                opponent_ready = true;
-                countdown_val = -1;
-                SDL_Log("[NET %d] MATCH_START! MyID: %d, Seed: %d", CLIENT_ID, my_id, seed);
-            }
-            break;
-        }
-        case PacketType::S_COUNTDOWN: {
-            if (len >= (int)sizeof(CommandPacket)) {
-                const CommandPacket* p = (const CommandPacket*)data;
-                countdown_val = p->data;
-            }
-            break;
-        }
-        case PacketType::S_GRANT_PIECE: {
-            if (len >= (int)sizeof(CommandPacket)) {
-                const CommandPacket* p = (const CommandPacket*)data;
-                granted_index = p->data;
-                SDL_Log("[NET %d RECV] S_GRANT_PIECE: index=%d", CLIENT_ID, granted_index);
-            }
-            break;
-        }
-        case PacketType::S_NEXT_PIECE_UPDATE: {
-            if (len >= (int)sizeof(CommandPacket)) {
-                const CommandPacket* p = (const CommandPacket*)data;
-                global_next_index = p->data;
-                SDL_Log("[NET %d RECV] S_NEXT_PIECE_UPDATE: next_global=%d", CLIENT_ID, global_next_index);
-            }
-            break;
-        }
-        case PacketType::S_STATE_BROADCAST: {
-            if (len >= (int)sizeof(GameStatePacket)) {
-                const GameStatePacket* p = (const GameStatePacket*)data;
-                if (p->header.client_id != my_id) {
-                    opponent_state = *p;
-                }
-            }
-            break;
-        }
-        case PacketType::S_WEAK_CONNECTION: {
-            weak_conn = true;
-            SDL_LogWarn(SDL_LOG_CATEGORY_CUSTOM, "Weak Connection detected!");
-            break;
-        }
-        case PacketType::S_GAME_OVER: {
-            remote_game_over = true;
-            loser_id = header->client_id;
-            SDL_Log("[NET %d] GAME OVER received from server. Loser: %d", CLIENT_ID, loser_id);
-            break;
-        }
-        case PacketType::S_GARBAGE_SIGNAL: {
-            if (len >= (int)sizeof(CommandPacket)) {
-                const CommandPacket* p = (const CommandPacket*)data;
-                pending_garbage += p->data;
-                SDL_Log("[NET %d] GARBAGE signal received: %d lines", CLIENT_ID, p->data);
-            }
-            break;
-        }
-        default:
-            break;
+    if (event.type == PacketType::S_STATE_BROADCAST && len >= 112) {
+        event.has_state = true;
+        const uint8_t* p = data + 6;
+        event.state.piece_type = (int8_t)p[0];
+        event.state.piece_rot = (int8_t)p[1];
+        event.state.piece_x = (int8_t)p[2];
+        event.state.piece_y = (int8_t)p[3];
+        event.state.piece_crystal_mask = (p[4] << 8) | p[5];
+        std::copy_n(p + 6, 100, event.state.grid);
+    } else if (len >= 8) {
+        event.data = (data[6] << 8) | data[7];
     }
+
+    event_queue.push(event);
 }
 
-bool NetworkClient::send_packet(const void* data, size_t len) {
+bool NetworkClient::send_packet(const uint8_t* data, size_t len) {
     if (!sock || !connected) return false;
-    const PacketHeader* header = (const PacketHeader*)data;
-    if (header->type != PacketType::C_STATE_UPDATE) {
-        SDL_Log("[NET %d SEND] Type: %d, Len: %d", CLIENT_ID, (int)header->type, (int)len);
-    }
-    uint16_t pkt_len = SDL_Swap16LE((uint16_t)len);
-    if (!NET_WriteToStreamSocket(sock.get(), &pkt_len, 2)) return false;
+    uint8_t pkt_len_buf[2];
+    pkt_len_buf[0] = (len >> 8) & 0xFF; // Big Endian
+    pkt_len_buf[1] = len & 0xFF;
+
+    if (!NET_WriteToStreamSocket(sock.get(), pkt_len_buf, 2)) return false;
     if (!NET_WriteToStreamSocket(sock.get(), data, len)) return false;
     return true;
 }
@@ -200,31 +167,43 @@ void NetworkClient::send_command(PacketType type, uint16_t data) {
     if (type == PacketType::C_LOCK_PIECE) {
         SDL_Log("[NET %d] Sending C_LOCK_PIECE (requesting new piece)", CLIENT_ID);
     }
-    CommandPacket p;
-    p.header.type = type;
-    p.header.client_id = my_id;
-    p.header.sequence = sequence_counter++;
-    p.data = data;
-    if (!send_packet(&p, sizeof(p))) {
+    uint8_t buf[8];
+    buf[0] = static_cast<uint8_t>(type);
+    buf[1] = my_id;
+    uint32_t seq = sequence_counter++;
+    buf[2] = (seq >> 24) & 0xFF;
+    buf[3] = (seq >> 16) & 0xFF;
+    buf[4] = (seq >> 8) & 0xFF;
+    buf[5] = seq & 0xFF;
+    buf[6] = (data >> 8) & 0xFF;
+    buf[7] = data & 0xFF;
+
+    if (!send_packet(buf, 8)) {
         connected = false;
     }
 }
 
 void NetworkClient::send_state(int8_t type, int8_t rot, int8_t x, int8_t y, uint16_t crystal_mask, const uint8_t* grid_data) {
     if (!connected || !sock) return;
-    GameStatePacket p;
-    p.header.type = PacketType::C_STATE_UPDATE;
-    p.header.client_id = my_id;
-    p.header.sequence = sequence_counter++;
-    p.piece_type = type;
-    p.piece_rot = rot;
-    p.piece_x = x;
-    p.piece_y = y;
-    p.piece_crystal_mask = crystal_mask;
-    std::copy_n(grid_data, 100, p.grid);
-    if (!send_packet(&p, sizeof(p))) {
+    uint8_t buf[112];
+    buf[0] = static_cast<uint8_t>(PacketType::C_STATE_UPDATE);
+    buf[1] = my_id;
+    uint32_t seq = sequence_counter++;
+    buf[2] = (seq >> 24) & 0xFF;
+    buf[3] = (seq >> 16) & 0xFF;
+    buf[4] = (seq >> 8) & 0xFF;
+    buf[5] = seq & 0xFF;
+    
+    buf[6] = (uint8_t)type;
+    buf[7] = (uint8_t)rot;
+    buf[8] = (uint8_t)x;
+    buf[9] = (uint8_t)y;
+    buf[10] = (crystal_mask >> 8) & 0xFF;
+    buf[11] = crystal_mask & 0xFF;
+    std::copy_n(grid_data, 100, buf + 12);
+
+    if (!send_packet(buf, 112)) {
         connected = false;
         SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET] Disconnected from server (write failure)");
     }
-    weak_conn = false; 
 }
