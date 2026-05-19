@@ -40,6 +40,11 @@ In vscode install Android iOS Emulator
 
 ## BUILD & RUN
 
+### Generate Protocol from YAML
+```bash
+python3 tools/gen_protocol.py
+```
+
 ### Linux
 ```bash
 mkdir build
