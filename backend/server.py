@@ -19,7 +19,10 @@ PKT_NAMES = {
     10: "C_GAME_OVER",
     11: "S_GAME_OVER",
     15: "C_SEND_GARBAGE",
-    16: "S_GARBAGE_SIGNAL"
+    16: "S_GARBAGE_SIGNAL",
+    17: "C_REQUEST_POWER",
+    18: "S_POWER_ACTIVATED",
+    19: "S_POWER_DEACTIVATED"
 }
 
 C_CONNECT = 1
@@ -35,6 +38,9 @@ C_GAME_OVER = 10
 S_GAME_OVER = 11
 C_SEND_GARBAGE = 15
 S_GARBAGE_SIGNAL = 16
+C_REQUEST_POWER = 17
+S_POWER_ACTIVATED = 18
+S_POWER_DEACTIVATED = 19
 
 # Packet Structures (Little Endian)
 # All packets are prefixed with a uint16 length (excluding the length field itself)
@@ -170,6 +176,14 @@ class TetrisServer:
             for c in self.clients:
                 if c is not s:
                     self.send_packet(c, COMMAND_FMT, S_GARBAGE_SIGNAL, cid, 0, lines)
+        elif p_type == C_REQUEST_POWER:
+            crystals = struct.unpack_from(">H", data, 6)[0]
+            print(f"POWER: Client {cid} requesting power with {crystals} crystals!", flush=True)
+            power_id = crystals if crystals <= 2 else 2 # Example mapping: ID = crystals, capped at 2
+            if power_id > 0:
+                print(f"POWER: Server authorizing power {power_id} for Client {cid}", flush=True)
+                for c in self.clients:
+                    self.send_packet(c, COMMAND_FMT, S_POWER_ACTIVATED, cid, 0, power_id)
         elif p_type == C_STATE_UPDATE:
             # Broadcast to other client
             if len(data) >= 112:

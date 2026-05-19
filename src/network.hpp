@@ -30,7 +30,10 @@ enum class PacketType : uint8_t {
     C_GAME_OVER = 10,      // Client says I lost
     S_GAME_OVER = 11,      // Server says someone lost
     C_SEND_GARBAGE = 15,     // Client sends garbage to opponent
-    S_GARBAGE_SIGNAL = 16    // Server notifies about incoming garbage
+    S_GARBAGE_SIGNAL = 16,   // Server notifies about incoming garbage
+    C_REQUEST_POWER = 17,    // Client requests to send a power
+    S_POWER_ACTIVATED = 18,  // Server broadcasts power activation (data = power_id)
+    S_POWER_DEACTIVATED = 19 // Server broadcasts power deactivation (data = power_id)
 };
 
 struct GameStatePayload {
@@ -71,6 +74,7 @@ public:
     void send_state(int8_t type, int8_t rot, int8_t x, int8_t y, uint16_t crystal_mask, const uint8_t* grid_data);
 
     bool is_connected() const { return connected; }
+    uint8_t get_id() const { return my_id; }
     
     // Event polling
     bool poll_event(NetworkEvent& out_event);

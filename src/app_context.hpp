@@ -42,6 +42,7 @@ struct AppContext {
     int countdown_val = -1;
     int global_next_index = 0;
     bool weak_conn = false;
+    bool waiting_for_power_response = false;
     
     bool board1_spawn_requested = false;
     bool game_over_sent = false;
