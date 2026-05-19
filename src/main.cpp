@@ -51,13 +51,15 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 
 SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     auto* app = static_cast<AppContext*>(appstate);
-    GameController::HandleInput(*app, event);
+    uint64_t current_time = SDL_GetTicks();
+    GameController::HandleInput(*app, event, current_time);
     return app->app_quit;
 }
 
 SDL_AppResult SDL_AppIterate(void* appstate) {
     auto* app = static_cast<AppContext*>(appstate);
-    GameController::Update(*app);
+    uint64_t current_time = SDL_GetTicks();
+    GameController::Update(*app, current_time);
     RenderSystem::Render(*app);
     return app->app_quit;
 }
