@@ -1,5 +1,6 @@
 #include "game_controller.hpp"
 #include "render_system.hpp"
+#include <cstdlib>
 
 #ifndef CLIENT_ID
 #define CLIENT_ID 1
@@ -11,12 +12,15 @@ void GameController::ResetGame(AppContext& app) {
     SDL_Log("[APP] Starting match, reset network...");
     app.net_client.reset();
     app.net_client = std::make_shared<NetworkClient>();
+    const char* port_str = std::getenv("TETRIS_PORT");
+    uint16_t port = port_str ? std::atoi(port_str) : 12345;
+
 #if defined(ANDROID)
-    SDL_Log("[APP] Connecting to emulator host (10.0.2.2)...");
-    app.net_client->connect("10.0.2.2", 12345);
+    SDL_Log("[APP] Connecting to emulator host (10.0.2.2:%d)...", port);
+    app.net_client->connect("10.0.2.2", port);
 #else
-    SDL_Log("[APP] Connecting to localhost...");
-    app.net_client->connect("127.0.0.1", 12345);
+    SDL_Log("[APP] Connecting to localhost (%d)...", port);
+    app.net_client->connect("127.0.0.1", port);
 #endif
     
     app.shared_queue = std::make_shared<SharedPieceQueue>();
