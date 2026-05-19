@@ -206,6 +206,9 @@ void ProcessNetworkEvents(AppContext& app) {
                     app.board2.crystals = 0; // Reset opponent's crystals
                     SDL_Log("[APP] Opponent activated power %d!", power_id);
                     // Execute incoming power effect
+                    if (!power.is_self_inflicted) {
+                        app.board1.discard_current_piece();
+                    }
                 }
 
                 if (power.is_frozen) {
@@ -228,6 +231,11 @@ void ProcessNetworkEvents(AppContext& app) {
 void SyncNetworkState(AppContext& app, uint64_t current_time) {
     if (!app.net_client || !app.board1.board_active || !app.opponent_ready)
         return;
+
+    if (app.net_client->is_connected() && !app.character_sent) {
+        app.net_client->send_command(PacketType::C_SET_CHARACTER, static_cast<uint16_t>(app.client_character));
+        app.character_sent = true;
+    }
 
     if (app.board1.waiting_for_spawn && !app.board1.spawn_request_pending) {
         app.board1.request_spawn();
@@ -335,6 +343,7 @@ void GameController::ResetGame(AppContext& app, std::shared_ptr<NetworkClient> c
     app.opponent_ready = false;
     app.game_over_sent = false;
     app.board1_spawn_requested = false;
+    app.character_sent = false;
 }
 
 void GameController::HandleInput(AppContext& app, SDL_Event* event, uint64_t current_time) {

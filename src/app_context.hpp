@@ -43,6 +43,8 @@ struct AppContext {
     int global_next_index = 0;
     bool weak_conn = false;
     bool waiting_for_power_response = false;
+    int client_character = 1;
+    bool character_sent = false;
     
     bool board1_spawn_requested = false;
     bool game_over_sent = false;

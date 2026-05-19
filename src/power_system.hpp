@@ -22,10 +22,17 @@ struct PowerDefinition {
 // Example function to get a power definition locally
 inline const PowerDefinition& get_power_definition(uint16_t power_id) {
     // This is a placeholder registry that would normally be populated from a config file.
-    static const PowerDefinition fallback = {0, 0, false, false, PowerDisableCriteria::NONE, 0};
+    static const PowerDefinition fallback = {
+        .power_id = 0,
+        .duration_ms = 0,
+        .is_frozen = false,
+        .is_self_inflicted = false,
+        .criteria = PowerDisableCriteria::NONE,
+        .criteria_threshold = 0
+    };
     static const PowerDefinition powers[] = {
-        {1, 5000, false, false, PowerDisableCriteria::TIME_ELAPSED, 0}, // Example Power 1
-        {2, 0, true, false, PowerDisableCriteria::LINES_CLEARED, 2}     // Example Power 2
+        {.power_id = 1, .duration_ms = 5000, .is_frozen = false, .is_self_inflicted = false, .criteria = PowerDisableCriteria::TIME_ELAPSED, .criteria_threshold = 0}, // Example Power 1
+        {.power_id = 2, .duration_ms = 0, .is_frozen = true, .is_self_inflicted = false, .criteria = PowerDisableCriteria::LINES_CLEARED, .criteria_threshold = 2}     // Example Power 2
     };
 
     for (const auto& power : powers) {

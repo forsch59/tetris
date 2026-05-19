@@ -4,49 +4,8 @@ import time
 import random
 import select
 import sys
-
-# Packet Types
-PKT_NAMES = {
-    1: "C_CONNECT",
-    2: "S_MATCH_START",
-    3: "C_LOCK_PIECE",
-    4: "S_GRANT_PIECE",
-    5: "C_STATE_UPDATE",
-    6: "S_STATE_BROADCAST",
-    7: "S_WEAK_CONNECTION",
-    8: "S_COUNTDOWN",
-    9: "S_NEXT_PIECE_UPDATE",
-    10: "C_GAME_OVER",
-    11: "S_GAME_OVER",
-    15: "C_SEND_GARBAGE",
-    16: "S_GARBAGE_SIGNAL",
-    17: "C_REQUEST_POWER",
-    18: "S_POWER_ACTIVATED",
-    19: "S_POWER_DEACTIVATED"
-}
-
-C_CONNECT = 1
-S_MATCH_START = 2
-C_LOCK_PIECE = 3
-S_GRANT_PIECE = 4
-C_STATE_UPDATE = 5
-S_STATE_BROADCAST = 6
-S_WEAK_CONNECTION = 7
-S_COUNTDOWN = 8
-S_NEXT_PIECE_UPDATE = 9
-C_GAME_OVER = 10
-S_GAME_OVER = 11
-C_SEND_GARBAGE = 15
-S_GARBAGE_SIGNAL = 16
-C_REQUEST_POWER = 17
-S_POWER_ACTIVATED = 18
-S_POWER_DEACTIVATED = 19
-
-# Packet Structures (Little Endian)
-# All packets are prefixed with a uint16 length (excluding the length field itself)
-HEADER_FMT = ">BBI" # Type (1), ClientID (1), Seq (4) = 6 bytes
-COMMAND_FMT = HEADER_FMT + "H" # 8 bytes total
-STATE_UPDATE_FMT = HEADER_FMT + "bbbbH100s" # 6 + 1+1+1+1 + 2 + 100 = 112 bytes total
+import ctypes
+from protocol import *
 
 class TetrisServer:
     def __init__(self, host='0.0.0.0', port=12345):
@@ -56,18 +15,21 @@ class TetrisServer:
         self.server_sock.listen(5)
         self.clients = []
         self.client_buffers = {} # socket -> bytearray
+        self.client_types = {} # socket -> char
         self.seed = random.randint(0, 65535)
         self.next_piece_index = 0
         self.countdown = -1
         self.last_tick = 0
 
-    def send_packet(self, sock, fmt, *args):
-        payload = struct.pack(fmt, *args)
-        header = struct.pack(">H", len(payload))
-        p_type = payload[0]
-        cid = self.clients.index(sock) + 1 if sock in self.clients else 0
-        print(f"[NET SEND] -> Client {cid}: {PKT_NAMES.get(p_type, 'UNKNOWN')} (len: {len(payload)}, data: {args[3] if len(args) > 3 else ''})", flush=True)
-        sock.sendall(header + payload)
+    def send_command(self, sock, p_type, client_id, sequence, data):
+        pkt = CommandPacket()
+        pkt.header.type = p_type
+        pkt.header.client_id = client_id
+        pkt.header.sequence = sequence
+        pkt.data = data
+        size_hdr = struct.pack(">H", ctypes.sizeof(pkt))
+        print(f"[NET SEND] -> Client {client_id}: {PKT_NAMES.get(p_type, 'UNKNOWN')} (len: {ctypes.sizeof(pkt)}, data: {data})", flush=True)
+        sock.sendall(size_hdr + bytes(pkt))
 
     def run(self):
         print(f"DEBUG SERVER started on port 12345, seed: {self.seed}", flush=True)
@@ -85,13 +47,13 @@ class TetrisServer:
                     if self.countdown > 0:
                         print(f"COUNTDOWN: {self.countdown}...", flush=True)
                         for i, c in enumerate(self.clients):
-                            self.send_packet(c, COMMAND_FMT, S_COUNTDOWN, i+1, 0, self.countdown)
+                            self.send_command(c, S_COUNTDOWN, i+1, 0, self.countdown)
                         self.countdown -= 1
                         self.last_tick = now
                     else:
                         print("MATCH: Countdown finished, sending START signal...", flush=True)
                         for i, c in enumerate(self.clients):
-                            self.send_packet(c, COMMAND_FMT, S_MATCH_START, i+1, 0, self.seed)
+                            self.send_command(c, S_MATCH_START, i+1, 0, self.seed)
                         self.countdown = -1
 
             for s in readable:
@@ -121,6 +83,7 @@ class TetrisServer:
                                 except: pass
                             self.clients = []
                             self.client_buffers = {}
+                            self.client_types = {}
                             self.countdown = -1
                             self.next_piece_index = 0
                             self.seed = random.randint(0, 65535)
@@ -158,42 +121,61 @@ class TetrisServer:
         if p_type != C_STATE_UPDATE:
             print(f"[NET RECV] <- Client {cid}: {PKT_NAMES.get(p_type, 'UNKNOWN')} (len: {len(data)})", flush=True)
 
-        if p_type == C_LOCK_PIECE:
+        if p_type == C_SET_CHARACTER:
+            if len(data) >= ctypes.sizeof(CommandPacket):
+                pkt = CommandPacket.from_buffer_copy(data)
+                client_char = pkt.data
+                self.client_types[s] = client_char
+                print(f"CHARACTER: Client {cid} registered as character {client_char}", flush=True)
+
+        elif p_type == C_LOCK_PIECE:
             granted = self.next_piece_index
             self.next_piece_index += 1
             print(f"ACTIVITY: Client {cid} LOCK -> Index {granted}. Next preview: {self.next_piece_index}", flush=True)
-            self.send_packet(s, COMMAND_FMT, S_GRANT_PIECE, cid, 0, granted)
+            self.send_command(s, S_GRANT_PIECE, cid, 0, granted)
             # Broadcast the NEW next piece index to everyone
             for c in self.clients:
-                self.send_packet(c, COMMAND_FMT, S_NEXT_PIECE_UPDATE, 0, 0, self.next_piece_index)
+                self.send_command(c, S_NEXT_PIECE_UPDATE, 0, 0, self.next_piece_index)
         elif p_type == C_GAME_OVER:
             print(f"GAME OVER: Client {cid} lost the game!", flush=True)
             for c in self.clients:
-                self.send_packet(c, COMMAND_FMT, S_GAME_OVER, cid, 0, 0)
+                self.send_command(c, S_GAME_OVER, cid, 0, 0)
         elif p_type == C_SEND_GARBAGE:
-            lines = struct.unpack_from(">H", data, 6)[0]
-            print(f"GARBAGE: Client {cid} sending {lines} lines to opponent!", flush=True)
-            for c in self.clients:
-                if c is not s:
-                    self.send_packet(c, COMMAND_FMT, S_GARBAGE_SIGNAL, cid, 0, lines)
-        elif p_type == C_REQUEST_POWER:
-            crystals = struct.unpack_from(">H", data, 6)[0]
-            print(f"POWER: Client {cid} requesting power with {crystals} crystals!", flush=True)
-            power_id = crystals if crystals <= 2 else 2 # Example mapping: ID = crystals, capped at 2
-            if power_id > 0:
-                print(f"POWER: Server authorizing power {power_id} for Client {cid}", flush=True)
-                for c in self.clients:
-                    self.send_packet(c, COMMAND_FMT, S_POWER_ACTIVATED, cid, 0, power_id)
-        elif p_type == C_STATE_UPDATE:
-            # Broadcast to other client
-            if len(data) >= 112:
-                # Update header type to broadcast
-                broadcast_data = bytearray(data)
-                broadcast_data[0] = S_STATE_BROADCAST
-                header = struct.pack(">H", len(broadcast_data))
+            if len(data) >= ctypes.sizeof(CommandPacket):
+                pkt = CommandPacket.from_buffer_copy(data)
+                lines = pkt.data
+                print(f"GARBAGE: Client {cid} sending {lines} lines to opponent!", flush=True)
                 for c in self.clients:
                     if c is not s:
-                        c.sendall(header + broadcast_data)
+                        self.send_command(c, S_GARBAGE_SIGNAL, cid, 0, lines)
+        elif p_type == C_REQUEST_POWER:
+            if len(data) >= ctypes.sizeof(CommandPacket):
+                pkt = CommandPacket.from_buffer_copy(data)
+                crystals = pkt.data
+                client_char = self.client_types.get(s, 1)
+                print(f"POWER: Client {cid} (Char {client_char}) requesting power with {crystals} crystals!", flush=True)
+                
+                if client_char == 1:
+                    power_id = 1 if crystals <= 2 else 2
+                elif client_char == 2:
+                    power_id = 2 if crystals <= 2 else 1
+                else:
+                    power_id = crystals if crystals <= 2 else 2
+                    
+                if power_id > 0:
+                    print(f"POWER: Server authorizing power {power_id} for Client {cid}", flush=True)
+                    for c in self.clients:
+                        self.send_command(c, S_POWER_ACTIVATED, cid, 0, power_id)
+        elif p_type == C_STATE_UPDATE:
+            # Broadcast to other client
+            if len(data) >= ctypes.sizeof(StateUpdatePacket):
+                # Update header type to broadcast
+                pkt = StateUpdatePacket.from_buffer_copy(data)
+                pkt.header.type = S_STATE_BROADCAST
+                header = struct.pack(">H", ctypes.sizeof(pkt))
+                for c in self.clients:
+                    if c is not s:
+                        c.sendall(header + bytes(pkt))
 
 if __name__ == "__main__":
     server = TetrisServer()

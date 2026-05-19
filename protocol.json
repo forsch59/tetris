@@ -1,0 +1,60 @@
+{
+  "packet_types": {
+    "C_SET_CHARACTER": 1,
+    "S_MATCH_START": 2,
+    "C_LOCK_PIECE": 3,
+    "S_GRANT_PIECE": 4,
+    "C_STATE_UPDATE": 5,
+    "S_STATE_BROADCAST": 6,
+    "S_WEAK_CONNECTION": 7,
+    "S_COUNTDOWN": 8,
+    "S_NEXT_PIECE_UPDATE": 9,
+    "C_GAME_OVER": 10,
+    "S_GAME_OVER": 11,
+    "C_SEND_GARBAGE": 15,
+    "S_GARBAGE_SIGNAL": 16,
+    "C_REQUEST_POWER": 17,
+    "S_POWER_ACTIVATED": 18,
+    "S_POWER_DEACTIVATED": 19
+  },
+  "structs": [
+    {
+      "name": "PacketHeader",
+      "fields": [
+        {"name": "type", "type": "uint8_t"},
+        {"name": "client_id", "type": "uint8_t"},
+        {"name": "sequence", "type": "uint32_t"}
+      ]
+    },
+    {
+      "name": "CommandPacket",
+      "fields": [
+        {"name": "header", "type": "PacketHeader"},
+        {"name": "data", "type": "uint16_t"}
+      ]
+    },
+    {
+      "name": "GameStatePayload",
+      "fields": [
+        {"name": "piece_type", "type": "int8_t"},
+        {"name": "piece_rot", "type": "int8_t"},
+        {"name": "piece_x", "type": "int8_t"},
+        {"name": "piece_y", "type": "int8_t"},
+        {"name": "piece_crystal_mask", "type": "uint16_t"},
+        {"name": "grid", "type": "uint8_t", "array": 100}
+      ]
+    },
+    {
+      "name": "StateUpdatePacket",
+      "fields": [
+        {"name": "header", "type": "PacketHeader"},
+        {"name": "piece_type", "type": "int8_t"},
+        {"name": "piece_rot", "type": "int8_t"},
+        {"name": "piece_x", "type": "int8_t"},
+        {"name": "piece_y", "type": "int8_t"},
+        {"name": "crystal_mask", "type": "uint16_t"},
+        {"name": "grid", "type": "uint8_t", "array": 100}
+      ]
+    }
+  ]
+}

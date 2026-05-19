@@ -3,6 +3,12 @@
 #include <algorithm>
 #include <cstring>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <arpa/inet.h>
+#endif
+
 #ifndef CLIENT_ID
 #define CLIENT_ID 0
 #endif
@@ -119,12 +125,14 @@ void NetworkClient::update() {
 }
 
 void NetworkClient::handle_packet(const uint8_t* data, int len) {
-    if (len < 6) return; // Minimum 6 bytes for header
+    if (len < sizeof(PacketHeader)) return; // Minimum bytes for header
+    
+    const PacketHeader* hdr = reinterpret_cast<const PacketHeader*>(data);
     
     NetworkEvent event;
-    event.type = static_cast<PacketType>(data[0]);
-    event.client_id = data[1];
-    event.sequence = (data[2] << 24) | (data[3] << 16) | (data[4] << 8) | data[5];
+    event.type = static_cast<PacketType>(hdr->type);
+    event.client_id = hdr->client_id;
+    event.sequence = ntohl(hdr->sequence);
 
     if (event.type != PacketType::S_STATE_BROADCAST) {
         SDL_Log("[NET %d RECV] Type: %d, Len: %d", CLIENT_ID, (int)event.type, len);
@@ -135,17 +143,18 @@ void NetworkClient::handle_packet(const uint8_t* data, int len) {
         my_id = event.client_id;
     }
 
-    if (event.type == PacketType::S_STATE_BROADCAST && len >= 112) {
+    if (event.type == PacketType::S_STATE_BROADCAST && len >= sizeof(StateUpdatePacket)) {
         event.has_state = true;
-        const uint8_t* p = data + 6;
-        event.state.piece_type = (int8_t)p[0];
-        event.state.piece_rot = (int8_t)p[1];
-        event.state.piece_x = (int8_t)p[2];
-        event.state.piece_y = (int8_t)p[3];
-        event.state.piece_crystal_mask = (p[4] << 8) | p[5];
-        std::copy_n(p + 6, 100, event.state.grid);
-    } else if (len >= 8) {
-        event.data = (data[6] << 8) | data[7];
+        const StateUpdatePacket* state_pkt = reinterpret_cast<const StateUpdatePacket*>(data);
+        event.state.piece_type = state_pkt->piece_type;
+        event.state.piece_rot = state_pkt->piece_rot;
+        event.state.piece_x = state_pkt->piece_x;
+        event.state.piece_y = state_pkt->piece_y;
+        event.state.piece_crystal_mask = ntohs(state_pkt->crystal_mask);
+        std::copy_n(state_pkt->grid, 100, event.state.grid);
+    } else if (len >= sizeof(CommandPacket)) {
+        const CommandPacket* cmd_pkt = reinterpret_cast<const CommandPacket*>(data);
+        event.data = ntohs(cmd_pkt->data);
     }
 
     event_queue.push(event);
@@ -167,42 +176,34 @@ void NetworkClient::send_command(PacketType type, uint16_t data) {
     if (type == PacketType::C_LOCK_PIECE) {
         SDL_Log("[NET %d] Sending C_LOCK_PIECE (requesting new piece)", CLIENT_ID);
     }
-    uint8_t buf[8];
-    buf[0] = static_cast<uint8_t>(type);
-    buf[1] = my_id;
-    uint32_t seq = sequence_counter++;
-    buf[2] = (seq >> 24) & 0xFF;
-    buf[3] = (seq >> 16) & 0xFF;
-    buf[4] = (seq >> 8) & 0xFF;
-    buf[5] = seq & 0xFF;
-    buf[6] = (data >> 8) & 0xFF;
-    buf[7] = data & 0xFF;
+    
+    CommandPacket pkt;
+    pkt.header.type = static_cast<uint8_t>(type);
+    pkt.header.client_id = my_id;
+    pkt.header.sequence = htonl(sequence_counter++);
+    pkt.data = htons(data);
 
-    if (!send_packet(buf, 8)) {
+    if (!send_packet(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt))) {
         connected = false;
     }
 }
 
 void NetworkClient::send_state(int8_t type, int8_t rot, int8_t x, int8_t y, uint16_t crystal_mask, const uint8_t* grid_data) {
     if (!connected || !sock) return;
-    uint8_t buf[112];
-    buf[0] = static_cast<uint8_t>(PacketType::C_STATE_UPDATE);
-    buf[1] = my_id;
-    uint32_t seq = sequence_counter++;
-    buf[2] = (seq >> 24) & 0xFF;
-    buf[3] = (seq >> 16) & 0xFF;
-    buf[4] = (seq >> 8) & 0xFF;
-    buf[5] = seq & 0xFF;
     
-    buf[6] = (uint8_t)type;
-    buf[7] = (uint8_t)rot;
-    buf[8] = (uint8_t)x;
-    buf[9] = (uint8_t)y;
-    buf[10] = (crystal_mask >> 8) & 0xFF;
-    buf[11] = crystal_mask & 0xFF;
-    std::copy_n(grid_data, 100, buf + 12);
+    StateUpdatePacket pkt;
+    pkt.header.type = static_cast<uint8_t>(PacketType::C_STATE_UPDATE);
+    pkt.header.client_id = my_id;
+    pkt.header.sequence = htonl(sequence_counter++);
+    
+    pkt.piece_type = type;
+    pkt.piece_rot = rot;
+    pkt.piece_x = x;
+    pkt.piece_y = y;
+    pkt.crystal_mask = htons(crystal_mask);
+    std::copy_n(grid_data, 100, pkt.grid);
 
-    if (!send_packet(buf, 112)) {
+    if (!send_packet(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt))) {
         connected = false;
         SDL_LogError(SDL_LOG_CATEGORY_CUSTOM, "[NET] Disconnected from server (write failure)");
     }

@@ -41,6 +41,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     }
 
     auto app = std::make_unique<AppContext>();
+    if (argc > 1 && argv[1][0] != '\0') {
+        app->client_character = std::atoi(argv[1]);
+    }
     app->window.reset(raw_window);
     app->renderer.reset(raw_renderer);
 

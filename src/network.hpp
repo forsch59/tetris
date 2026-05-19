@@ -17,33 +17,7 @@
 #include <vector>
 #include <queue>
 
-enum class PacketType : uint8_t {
-    C_CONNECT = 1,      // Client connects
-    S_MATCH_START = 2,  // Server says match started
-    C_LOCK_PIECE = 3,   // Client wants a new piece
-    S_GRANT_PIECE = 4,  // Server grants piece index
-    C_STATE_UPDATE = 5, // Client sends board state
-    S_STATE_BROADCAST = 6, // Server broadcasts opponent state
-    S_WEAK_CONNECTION = 7, // Server warns about lag
-    S_COUNTDOWN = 8,       // Server sends countdown tick
-    S_NEXT_PIECE_UPDATE = 9, // Server sends global next piece index
-    C_GAME_OVER = 10,      // Client says I lost
-    S_GAME_OVER = 11,      // Server says someone lost
-    C_SEND_GARBAGE = 15,     // Client sends garbage to opponent
-    S_GARBAGE_SIGNAL = 16,   // Server notifies about incoming garbage
-    C_REQUEST_POWER = 17,    // Client requests to send a power
-    S_POWER_ACTIVATED = 18,  // Server broadcasts power activation (data = power_id)
-    S_POWER_DEACTIVATED = 19 // Server broadcasts power deactivation (data = power_id)
-};
-
-struct GameStatePayload {
-    int8_t piece_type;
-    int8_t piece_rot;
-    int8_t piece_x;
-    int8_t piece_y;
-    uint16_t piece_crystal_mask; // 16 bits for 4x4 crystal matrix
-    uint8_t grid[100]; // 10x20 grid, 4 bits per cell = 100 bytes
-};
+#include "network_protocol.hpp"
 
 struct NetworkEvent {
     PacketType type;
